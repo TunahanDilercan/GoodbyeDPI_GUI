@@ -7,7 +7,7 @@ import winshell
 
 # Global değişkenler
 status = "paused"
-selected_mode = "2_any_country_dnsredir.cmd"  # Varsayılan olarak diğer ülkeler için olan mod seçili
+selected_mode = "2_any_country_dnsredir.cmd"  
 process = None
 
 # PyInstaller çalışırken dosya yollarını düzelt
@@ -20,7 +20,7 @@ def resource_path(relative_path):
 # GoodbyeDPI klasörünün yolu
 GOODBYE_DPI_PATH = resource_path("goodbyedpi-0.2.2")
 
-# DPI bypass için script dosyaları
+
 commands = {
     "1_russia_blacklist_dnsredir.cmd": os.path.join(GOODBYE_DPI_PATH, "1_russia_blacklist_dnsredir.cmd"),
     "2_any_country_dnsredir.cmd": os.path.join(GOODBYE_DPI_PATH, "2_any_country_dnsredir.cmd"),

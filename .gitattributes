@@ -1,0 +1,20 @@
+* text=auto
+
+# Explicitly declare C/C++ source files to use LF
+*.c text eol=lf
+*.h text eol=lf
+*.rc text eol=lf
+*.manifest text eol=lf
+Makefile text eol=lf
+
+# Explicitly declare Windows-specific files to use CRLF
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary files should not be modified
+*.exe binary
+*.dll binary
+*.sys binary
+*.ico binary
+*.lib binary
+*.a binary

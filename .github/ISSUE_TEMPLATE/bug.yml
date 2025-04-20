@@ -1,0 +1,81 @@
+name: The program crashes, hangs, certain function does not work / Программа падает, зависает, отдельная функция не работает
+description: File a bug report / Сообщить об ошибке в программе
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Carefully read all the text IN FULL. Take this seriously.
+        ### Use this form only for software bug reports! The website does not open? That's likely NOT a bug, do NOT report it here! You have a question regarding the program? That's not a bug either!
+        #### If in doubt, [use NTC.party forum](https://ntc.party/c/community-software/goodbyedpi).
+        ### Внимательно прочитайте ВЕСЬ текст ниже. Отнеситесь к этому со всей ответственностью.
+        ### Используйте эту форму только для сообщений об ошибках в программе! Неоткрывающиеся сайты таковыми не являются, вопросы по программе к ошибкам не относятся.
+        #### Если у вас есть сомнения, [воспользуйтесь форумом NTC.party](https://ntc.party/c/community-software/goodbyedpi).
+
+        GoodbyeDPI does not guarantee to work with your ISP for every blocked website or at all. If GoodbyeDPI can't unblock some or any websites, this is most likely not a software bug, and you should not report it here.
+
+        Please only report software bugs, such as:
+          * program crash
+          * incorrect network packet handling
+          * antivirus incompatibility
+          * DNS redirection problems
+          * memory leaks
+          * other software issues
+
+        Please make sure to check other opened and closed issues, it could be your bug has been reported already.
+        For questions, or if in doubt, [use NTC.party forum](https://ntc.party/c/community-software/goodbyedpi).
+
+        ### ИСПОЛЬЗУЙТЕ ЭТУ ФОРМУ ТОЛЬКО ДЛЯ БАГОВ! Веб-сайт не открывается? Это, скорее всего, не баг, не сообщайте сюда!
+        GoodbyeDPI не гарантирует ни 100% работу с вашим провайдером, ни работу с каждым заблокированным сайтом. Если GoodbyeDPI не разблокирует доступ к некоторым или всем веб-сайтам, вероятнее всего, это не программная ошибка, и не стоит о ней сообщать здесь.
+
+        Пожалуйста, сообщайте только об ошибках в программе, таких как:
+          * падение программы
+          * некорректная обработка сетевых пакетов
+          * несовместимость с антивирусами
+          * проблемы с перенаправлением DNS
+          * утечки памяти
+          * другие ошибки в программе
+
+        Также посмотрите другие открытые и закрытые баги. Возможно, ошибка уже обсуждалась или исправлена.
+        Для вопросов, а также в случае сомнений в определении бага, обращайтесь [на форум NTC.party](https://ntc.party/c/community-software/goodbyedpi).
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: CAPTCHA
+      description: Confirm that you have read the text above / Подтвердите, что вы прочитали текст выше
+      options:
+        - label: I understand I could be banned from the repository if I misusing issue section not for posting bugs, but for question or 'broken website' report. / Я понимаю, что меня могут заблокировать в репозитории, если я буду использовать раздел issue не для сообщений об ошибках, а для вопросов или сообщении о «неработающем веб-сайте».
+          required: true
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system / операционная система
+      description: Enter your Windows version. For Windows 10 and 11 include build/update number.
+      placeholder: ex. Windows 10 20H2
+    validations:
+      required: true
+  - type: dropdown
+    id: is-svc
+    attributes:
+      label: Running as service / Запуск программы как сервис
+      description: Do you use GoodbyeDPI as a Windows Service?
+      options:
+        - I run it as a regular program / Запускаю программу обычным образом
+        - I installed it as a service / Установил как сервис Windows
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Describe the bug / Опишите ошибку программы
+      description: A clear and concise description of what the bug is / Подробно опишите, в чём заключается ошибка
+      placeholder: Attach the screenshots for clarity / При необходимости приложите скриншоты
+    validations:
+      required: true
+  - type: textarea
+    id: additional-info
+    attributes:
+      label: Additional information / Дополнительная информация
+      description: If you have a hints on why this bug happens, you can express it here / Если у вас есть предположения об источнике бага, вы можете изложить их здесь

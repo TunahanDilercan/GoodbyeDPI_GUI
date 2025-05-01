@@ -24,6 +24,7 @@ jobs:
         install: >-
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-binutils
+          unzip
           make
     
     - name: Prepare WinDivert
@@ -32,7 +33,9 @@ jobs:
         echo "Downloading WinDivert..."
         mkdir -p WinDivert-2.2.0-D
         curl -L -o windivert.zip https://github.com/basil00/Divert/releases/download/v2.2.0/WinDivert-2.2.0-D.zip
-        unzip windivert.zip -d WinDivert-2.2.0-D
+        ls -la
+        echo "Extracting WinDivert..."
+        unzip -o windivert.zip -d WinDivert-2.2.0-D
         echo "WinDivert contents:"
         ls -la WinDivert-2.2.0-D
     

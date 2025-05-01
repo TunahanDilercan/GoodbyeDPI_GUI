@@ -30,16 +30,12 @@ endif
 # Derleyici ve bağlayıcı için önekler
 CC = $(CCPREFIX)gcc
 LD = $(CC)
-# Windres için doğrudan sabit yol tanımlanıyor
-ifeq ($(BIT64),1)
-    WINDRES = C:/msys64/mingw64/bin/windres.exe
-else
-    WINDRES = C:/msys64/mingw32/bin/windres.exe
-endif
+# Windres için platform bağımsız tanım
+WINDRES = $(CCPREFIX)windres
 
 .PHONY: default all clean ensure_dir clean_logs
 
-default: ensure_dir clean_logs $(TARGET) copy_to_dest
+default: ensure_dir clean_logs $(TARGET)
 all: default
 
 # Define source files excluding the resource file
@@ -70,12 +66,8 @@ goodbyedpi-rc.o: goodbyedpi-rc.rc icon.ico icon_running.ico icon_paused.ico
 
 $(TARGET): $(OBJECTS) $(RESOURCE_OBJ)
 	@mkdir -p $(DIR)
-	$(LD) $(OBJECTS) $(RESOURCE_OBJ) $(LDFLAGS) -mwindows -L$(WINDIVERT_DIR) -lWinDivert -lws2_32 -lole32 -lshell32 -luuid -lcomctl32 -luxtheme -s -o $(DIR)/$(TARGET)
-
-# Sadece exe dosyasını ilgili klasöre kopyala
-copy_to_dest:
-	@echo "Copying executable to $(DEST_DIR) directory"
-	@cp $(DIR)/$(TARGET) $(DEST_DIR)/
+	$(LD) $(OBJECTS) $(RESOURCE_OBJ) $(LDFLAGS) -mwindows -L$(WINDIVERT_DIR) -lWinDivert -lws2_32 -lole32 -lshell32 -luuid -lcomctl32 -luxtheme -s -o $(DEST_DIR)/$(TARGET)
+	@echo "Executable built successfully at $(DEST_DIR)/$(TARGET)"
 
 clean:
 	-rm -f *.o utils/*.o

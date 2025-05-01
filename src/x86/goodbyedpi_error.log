@@ -1,0 +1,7 @@
+=== Hata logu başlatıldı - May  1 2025 ===
+StartService failed: 5
+[2025-05-01 16:20:29] Failed to install WinDivert driver
+StartService failed: 5
+[2025-05-01 16:20:33] Failed to install WinDivert driver
+StartService failed: 5
+[2025-05-01 16:20:41] Failed to install WinDivert driver

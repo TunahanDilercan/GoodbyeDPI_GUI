@@ -3,7 +3,7 @@
 
 typedef struct {
     char name[128];
-    char args[384];
+    char args[256];
 } Script;
 
 void scripts_init(void);
@@ -11,5 +11,8 @@ int  scripts_count(void);
 const Script* script_get(int);
 int  script_run(int idx);
 void script_stop(void);
+Script* scripts_get_all(void);
+void scripts_free(void);
+int get_default_script_index(void);
 
 #endif

@@ -1,0 +1,105 @@
+=== Log başlatıldı - May  1 2025 ===
+[GUI] WM_CREATE: Initialized scripts, count=10
+[GUI] WM_CREATE: Got scripts, scripts_size=10
+[GUI] WM_CREATE: Loaded selected script index=8
+[GUI] WM_CREATE: Set selected_script=8
+[2025-05-01 18:08:17] handle_start called, is_running=0
+[2025-05-01 18:08:17] Checking admin privileges
+Checking administrator privileges...
+Administrator check result: YES
+[2025-05-01 18:08:17] Admin check passed
+[2025-05-01 18:08:17] Checking WinDivert.dll
+Checking WinDivert.dll...
+WinDivert.dll found next to executable: D:\FilesHan\kod\GUI\v2.1\GoodbyeDPI-master\src\32_exe\WinDivert.dll
+[2025-05-01 18:08:17] WinDivert.dll check passed
+[2025-05-01 18:08:17] Installing WinDivert driver
+Attempting to install WinDivert driver...
+WinDivert service is already running
+[2025-05-01 18:08:17] WinDivert driver installed successfully
+[2025-05-01 18:08:17] Checking script selection (selected_script=16, scripts_size=20)
+[2025-05-01 18:08:17] Using script: [TR] Alternative 4 (index=16)
+[2025-05-01 18:08:17] Başlatma işlemini yapıyorum: [TR] Alternative 4
+[script_stop] Stopping GoodbyeDPI...
+[script_stop] GoodbyeDPI stopped successfully
+[script_run] Running script: [TR] Alternative 4 with args: -5 --dns-addr 77.88.8.8 --dns-port 1253 --dnsv6-addr 2a02:6b8::feed:0ff --dnsv6-port 1253
+[script_run] Script [TR] Alternative 4 parsed: 10 arguments
+  argv[0]: 'goodbyedpi.exe'
+  argv[1]: '-5'
+  argv[2]: '--dns-addr'
+  argv[3]: '77.88.8.8'
+  argv[4]: '--dns-port'
+  argv[5]: '1253'
+  argv[6]: '--dnsv6-addr'
+  argv[7]: '2a02:6b8::feed:0ff'
+  argv[8]: '--dnsv6-port'
+  argv[9]: '1253'
+start_goodbyedpi called with 10 arguments:
+  argv[0]: goodbyedpi.exe
+  argv[1]: -5
+  argv[2]: --dns-addr
+  argv[3]: 77.88.8.8
+  argv[4]: --dns-port
+  argv[5]: 1253
+  argv[6]: --dnsv6-addr
+  argv[7]: 2a02:6b8::feed:0ff
+  argv[8]: --dnsv6-port
+  argv[9]: 1253
+WinDivert servisi zaten çalışıyor.
+Creating thread for dpi_thread
+Thread created successfully
+[script_run] start_goodbyedpi result: 0 (success)
+[2025-05-01 18:08:17] script_run returned 0
+[2025-05-01 18:08:17] Script started successfully, is_running=1
+[2025-05-01 18:18:14] handle_stop çağrıldı, is_running=1
+[2025-05-01 18:18:14] GoodbyeDPI durdurulacak
+[script_stop] Stopping GoodbyeDPI...
+[script_stop] GoodbyeDPI stopped successfully
+[2025-05-01 18:18:14] GoodbyeDPI başarıyla durduruldu
+[2025-05-01 18:18:14] handle_stop tamamlandı, is_running=0
+[2025-05-01 18:18:14] handle_start called, is_running=0
+[2025-05-01 18:18:14] Checking admin privileges
+Checking administrator privileges...
+Administrator check result: YES
+[2025-05-01 18:18:14] Admin check passed
+[2025-05-01 18:18:14] Checking WinDivert.dll
+Checking WinDivert.dll...
+WinDivert.dll found next to executable: D:\FilesHan\kod\GUI\v2.1\GoodbyeDPI-master\src\32_exe\WinDivert.dll
+[2025-05-01 18:18:14] WinDivert.dll check passed
+[2025-05-01 18:18:14] Installing WinDivert driver
+Attempting to install WinDivert driver...
+WinDivert service is already running
+[2025-05-01 18:18:14] WinDivert driver installed successfully
+[2025-05-01 18:18:14] Checking script selection (selected_script=6, scripts_size=20)
+[2025-05-01 18:18:14] Using script: [TR] Alternative 4 (index=6)
+[2025-05-01 18:18:14] Başlatma işlemini yapıyorum: [TR] Alternative 4
+[script_stop] Stopping GoodbyeDPI...
+[script_stop] GoodbyeDPI stopped successfully
+[script_run] Running script: [TR] Alternative 4 with args: -5 --dns-addr 77.88.8.8 --dns-port 1253 --dnsv6-addr 2a02:6b8::feed:0ff --dnsv6-port 1253
+[script_run] Script [TR] Alternative 4 parsed: 10 arguments
+  argv[0]: 'goodbyedpi.exe'
+  argv[1]: '-5'
+  argv[2]: '--dns-addr'
+  argv[3]: '77.88.8.8'
+  argv[4]: '--dns-port'
+  argv[5]: '1253'
+  argv[6]: '--dnsv6-addr'
+  argv[7]: '2a02:6b8::feed:0ff'
+  argv[8]: '--dnsv6-port'
+  argv[9]: '1253'
+start_goodbyedpi called with 10 arguments:
+  argv[0]: goodbyedpi.exe
+  argv[1]: -5
+  argv[2]: --dns-addr
+  argv[3]: 77.88.8.8
+  argv[4]: --dns-port
+  argv[5]: 1253
+  argv[6]: --dnsv6-addr
+  argv[7]: 2a02:6b8::feed:0ff
+  argv[8]: --dnsv6-port
+  argv[9]: 1253
+WinDivert servisi zaten çalışıyor.
+Creating thread for dpi_thread
+Thread created successfully
+[script_run] start_goodbyedpi result: 0 (success)
+[2025-05-01 18:18:15] script_run returned 0
+[2025-05-01 18:18:15] Script started successfully, is_running=1

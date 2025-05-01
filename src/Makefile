@@ -12,6 +12,7 @@ ifeq ($(BIT64),1)
     WINDIVERT_DIR = ../binary/amd64
     # Windres için mimari seçeneği
     WINDRES_ARCH = --target=pe-x86-64
+    DEST_DIR = 64_exe
 else
     # 32-bit için tanımlamalar
     CFLAGS += -m32 -I../include
@@ -23,17 +24,22 @@ else
     WINDIVERT_DIR = ../binary/x86
     # Windres için mimari seçeneği
     WINDRES_ARCH = --target=pe-i386
+    DEST_DIR = 32_exe
 endif
 
 # Derleyici ve bağlayıcı için önekler
 CC = $(CCPREFIX)gcc
 LD = $(CC)
-# Windres için direkt yolu belirt
-CCWINDRES = $(if $(BIT64),C:/msys64/mingw64/bin/windres.exe,C:/msys64/mingw32/bin/windres.exe)
+# Windres için doğrudan sabit yol tanımlanıyor
+ifeq ($(BIT64),1)
+    WINDRES = C:/msys64/mingw64/bin/windres.exe
+else
+    WINDRES = C:/msys64/mingw32/bin/windres.exe
+endif
 
-.PHONY: default all clean ensure_dir
+.PHONY: default all clean ensure_dir clean_logs
 
-default: ensure_dir $(TARGET) copy_windivert copy_to_32exe
+default: ensure_dir clean_logs $(TARGET) copy_to_dest
 all: default
 
 # Define source files excluding the resource file
@@ -46,13 +52,19 @@ HEADERS = $(wildcard *.h utils/*.h)
 
 ensure_dir:
 	@mkdir -p $(DIR)
-	@mkdir -p 32_exe
+	@mkdir -p $(DEST_DIR)
+
+# Her derleme işleminde log dosyalarını temizleyen hedef
+clean_logs:
+	@echo "Cleaning log files for build..."
+	@echo "=== Log başlatıldı - $(shell date '+%d-%m-%Y') ===" > $(DEST_DIR)/goodbyedpi_log.txt
+	@echo "=== Hata logu başlatıldı - $(shell date '+%d-%m-%Y') ===" > $(DEST_DIR)/goodbyedpi_error.log
 
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 goodbyedpi-rc.o: goodbyedpi-rc.rc icon.ico icon_running.ico icon_paused.ico
-	$(CCWINDRES) $(WINDRES_ARCH) -I../include $< $@
+	$(WINDRES) $(WINDRES_ARCH) -I../include $< $@
 
 .PRECIOUS: $(TARGET) $(OBJECTS)
 
@@ -60,20 +72,12 @@ $(TARGET): $(OBJECTS) $(RESOURCE_OBJ)
 	@mkdir -p $(DIR)
 	$(LD) $(OBJECTS) $(RESOURCE_OBJ) $(LDFLAGS) -mwindows -L$(WINDIVERT_DIR) -lWinDivert -lws2_32 -lole32 -lshell32 -luuid -lcomctl32 -luxtheme -s -o $(DIR)/$(TARGET)
 
-copy_windivert:
-	@echo "Copying WinDivert.dll to $(DIR)"
-	@cp $(WINDIVERT_DIR)/WinDivert.dll $(DIR)/
-
-copy_to_32exe:
-	@if [ "$(BIT64)" != "1" ]; then \
-		echo "Copying 32-bit executable and DLLs to 32_exe directory"; \
-		cp $(DIR)/$(TARGET) 32_exe/; \
-		cp $(WINDIVERT_DIR)/WinDivert.dll 32_exe/; \
-		if [ -f "$(DIR)/WinDivert32.sys" ]; then cp $(DIR)/WinDivert32.sys 32_exe/; fi; \
-		if [ -f "$(DIR)/WinDivert64.sys" ]; then cp $(DIR)/WinDivert64.sys 32_exe/; fi; \
-	fi
+# Sadece exe dosyasını ilgili klasöre kopyala
+copy_to_dest:
+	@echo "Copying executable to $(DEST_DIR) directory"
+	@cp $(DIR)/$(TARGET) $(DEST_DIR)/
 
 clean:
 	-rm -f *.o utils/*.o
 	-rm -f $(DIR)/$(TARGET)
-	-rm -f 32_exe/$(TARGET)
+	-rm -f $(DEST_DIR)/$(TARGET)

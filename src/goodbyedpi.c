@@ -23,14 +23,271 @@
 #include <windows.h>
 #include <process.h>
 
+// Flag to signal thread termination
+static volatile int exiting = 0;
 static volatile int goodbyedpi_running = 0;
 static HANDLE       goodbyedpi_thread  = NULL;
+
+// WinDivert sürücüsünü yüklemek ve başlatmak için geliştirilmiş fonksiyon
+static BOOL load_windivert_driver(void) {
+    BOOL success = FALSE;
+    SC_HANDLE scm = NULL, service = NULL;
+    SERVICE_STATUS status;
+    char sys_path[MAX_PATH] = {0};
+    char current_dir[MAX_PATH] = {0};
+    DWORD error = 0;
+    FILE *logfile = NULL;
+
+    // Geçerli dizini al
+    if (!GetCurrentDirectoryA(MAX_PATH, current_dir)) {
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "GetCurrentDirectory failed: %lu\n", GetLastError());
+            fclose(logfile);
+        }
+        goto cleanup;
+    }
+
+    // Sürücü dosyası yolunu oluştur
+    snprintf(sys_path, MAX_PATH, "%s\\WinDivert32.sys", current_dir);
+    
+    // Sürücü dosyasının varlığını kontrol et
+    if (GetFileAttributesA(sys_path) == INVALID_FILE_ATTRIBUTES) {
+        // Eğer sürücü dosyası mevcut değilse, alternatif konumlar dene
+        snprintf(sys_path, MAX_PATH, "%s\\..\\binary\\x86\\WinDivert32.sys", current_dir);
+        if (GetFileAttributesA(sys_path) == INVALID_FILE_ATTRIBUTES) {
+            logfile = fopen("goodbyedpi_error.log", "a");
+            if (logfile) {
+                fprintf(logfile, "WinDivert32.sys dosyası bulunamadı: %s\n", sys_path);
+                fclose(logfile);
+            }
+            goto cleanup;
+        }
+    }
+
+    // Service Control Manager'ı aç
+    scm = OpenSCManagerA(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+    if (!scm) {
+        error = GetLastError();
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "OpenSCManager başarısız oldu: %lu\n", error);
+            fprintf(logfile, "Bu hata genellikle yönetici haklarının olmadığı anlamına gelir.\n");
+            fprintf(logfile, "Programı YÖNETİCİ OLARAK çalıştırmalısınız!\n");
+            fclose(logfile);
+        }
+        goto cleanup;
+    }
+
+    // Servis zaten var mı diye kontrol et
+    service = OpenServiceA(scm, "WinDivert", SERVICE_ALL_ACCESS);
+    if (service) {
+        // Servis zaten var, durumunu kontrol et
+        if (QueryServiceStatus(service, &status)) {
+            if (status.dwCurrentState == SERVICE_RUNNING) {
+                // Servis zaten çalışıyor
+                logfile = fopen("goodbyedpi_log.txt", "a");
+                if (logfile) {
+                    fprintf(logfile, "WinDivert servisi zaten çalışıyor.\n");
+                    fclose(logfile);
+                }
+                success = TRUE;
+                goto cleanup;
+            }
+            else if (status.dwCurrentState == SERVICE_STOPPED) {
+                // Servis var ama durdurulmuş, başlatmaya çalış
+                if (StartServiceA(service, 0, NULL)) {
+                    // Başlatıldı
+                    logfile = fopen("goodbyedpi_log.txt", "a");
+                    if (logfile) {
+                        fprintf(logfile, "WinDivert servisi başarıyla başlatıldı.\n");
+                        fclose(logfile);
+                    }
+                    success = TRUE;
+                    goto cleanup;
+                }
+                else {
+                    error = GetLastError();
+                    logfile = fopen("goodbyedpi_error.log", "a");
+                    if (logfile) {
+                        fprintf(logfile, "StartService başarısız oldu: %lu\n", error);
+                        if (error == ERROR_SERVICE_DISABLED) {
+                            fprintf(logfile, "WinDivert servisi devre dışı bırakılmış.\n");
+                        }
+                        fclose(logfile);
+                    }
+                    // Servis başlatılamadı, sil ve yeniden oluştur
+                    DeleteService(service);
+                    CloseServiceHandle(service);
+                    service = NULL;
+                }
+            }
+        }
+        else {
+            // Servis durumu alınamadı, sil ve yeniden oluştur
+            DeleteService(service);
+            CloseServiceHandle(service);
+            service = NULL;
+        }
+    }
+
+    // Servis yok veya başlatılamadıysa, yeni oluştur
+    if (!service) {
+        service = CreateServiceA(
+            scm,                    // SCM veritabanı
+            "WinDivert",            // Servis adı
+            "WinDivert Packet Diversion Driver", // Görünen adı
+            SERVICE_ALL_ACCESS,     // İstenen erişim
+            SERVICE_KERNEL_DRIVER,  // Servis tipi
+            SERVICE_DEMAND_START,   // Başlangıç tipi
+            SERVICE_ERROR_NORMAL,   // Hata kontrol tipi
+            sys_path,               // Servis için binary yolu
+            NULL,                   // Yük sıralaması yok
+            NULL,                   // Tag değeri yok
+            NULL,                   // Bağımlılıklar yok
+            NULL,                   // LocalSystem hesabı
+            NULL);                  // Şifre yok
+
+        if (!service) {
+            error = GetLastError();
+            logfile = fopen("goodbyedpi_error.log", "a");
+            if (logfile) {
+                fprintf(logfile, "CreateService başarısız oldu: %lu\n", error);
+                fprintf(logfile, "Sürücü yolu: %s\n", sys_path);
+                if (error == ERROR_SERVICE_EXISTS) {
+                    fprintf(logfile, "WinDivert servisi zaten var ancak açılamıyor.\n");
+                    fprintf(logfile, "Komut istemini yönetici olarak açın ve şu komutu çalıştırın:\n");
+                    fprintf(logfile, "sc delete WinDivert\n");
+                }
+                else if (error == ERROR_PATH_NOT_FOUND || error == ERROR_FILE_NOT_FOUND) {
+                    fprintf(logfile, "WinDivert32.sys dosyası bulunamadı.\n");
+                }
+                fclose(logfile);
+            }
+            goto cleanup;
+        }
+
+        // Yeni oluşturulan servisi başlat
+        if (!StartServiceA(service, 0, NULL)) {
+            error = GetLastError();
+            logfile = fopen("goodbyedpi_error.log", "a");
+            if (logfile) {
+                fprintf(logfile, "StartService başarısız oldu: %lu\n", error);
+                fprintf(logfile, "Sürücü yolu: %s\n", sys_path);
+                if (error == ERROR_FILE_NOT_FOUND) {
+                    fprintf(logfile, "WinDivert32.sys dosyası bulunamadı\n");
+                }
+                else if (error == ERROR_SERVICE_ALREADY_RUNNING) {
+                    fprintf(logfile, "WinDivert servisi zaten çalışıyor (bildirildi)\n");
+                    success = TRUE;
+                }
+                else if (error == ERROR_INVALID_IMAGE_HASH) {
+                    fprintf(logfile, "Windows sürücü imza doğrulaması başarısız oldu.\n");
+                    fprintf(logfile, "Windows 10/11 için sürücü imza zorunluluğunu devre dışı bırakmalısınız.\n");
+                }
+                fclose(logfile);
+            }
+            if (error != ERROR_SERVICE_ALREADY_RUNNING) {
+                // Sürücü başlatılamazsa servisi sil
+                DeleteService(service);
+                goto cleanup;
+            }
+        }
+        
+        // Başarılı
+        logfile = fopen("goodbyedpi_log.txt", "a");
+        if (logfile) {
+            fprintf(logfile, "WinDivert servisi başarıyla oluşturuldu ve başlatıldı.\n");
+            fclose(logfile);
+        }
+        success = TRUE;
+    }
+
+cleanup:
+    if (service) CloseServiceHandle(service);
+    if (scm) CloseServiceHandle(scm);
+
+    return success;
+}
+
+// WinDivert sürücüsünün durumunu kontrol eden fonksiyon
+BOOL check_windivert_driver(void)
+{
+    // Önce özel WinDivert sürücü yükleme fonksiyonunu dene
+    if (load_windivert_driver()) {
+        return TRUE;
+    }
+
+    // Özel yükleme başarısız olursa, eski kontrol yöntemini dene
+    SC_HANDLE scm, service;
+    SERVICE_STATUS status;
+    BOOL result = FALSE;
+    FILE *logfile;
+
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "Gelişmiş sürücü yükleme başarısız oldu, standart kontrol yapılıyor...\n");
+        fclose(logfile);
+    }
+
+    // SCM'e bağlan
+    scm = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
+    if (!scm) {
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "OpenSCManager başarısız oldu: %lu\n", GetLastError());
+            fclose(logfile);
+        }
+        return FALSE;
+    }
+
+    // WinDivert servisini bul
+    service = OpenServiceA(scm, "WinDivert", SERVICE_QUERY_STATUS);
+    if (service) {
+        if (QueryServiceStatus(service, &status)) {
+            result = (status.dwCurrentState == SERVICE_RUNNING);
+            
+            if (!result) {
+                logfile = fopen("goodbyedpi_error.log", "a");
+                if (logfile) {
+                    fprintf(logfile, "WinDivert servisi çalışmıyor. Durum: %lu\n", status.dwCurrentState);
+                    fclose(logfile);
+                }
+            }
+        }
+        CloseServiceHandle(service);
+    }
+    else {
+        // Servis bulunamadı
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "WinDivert servisi bulunamadı\n");
+            fclose(logfile);
+        }
+    }
+
+    CloseServiceHandle(scm);
+    return result;
+}
+
+// Blacklist dosyasının varlığını kontrol eden fonksiyon
+BOOL check_blacklist_file(const char *path)
+{
+    FILE *file = fopen(path, "r");
+    if (file) {
+        fclose(file);
+        return TRUE;
+    }
+    return FALSE;
+}
 
 static unsigned __stdcall dpi_thread(void *arg)
 {
     char **argv = (char**)arg;
     int argc = 0; while (argv[argc]) ++argc;
     goodbyedpi_main(argc, argv); // BLOKLAYICI
+    // Ensure cleanup happens before thread truly exits
+    deinit_all();
     goodbyedpi_running = 0;
     // Free argv copy
     for (int i = 0; i < argc; ++i) free(argv[i]);
@@ -40,23 +297,126 @@ static unsigned __stdcall dpi_thread(void *arg)
 
 int start_goodbyedpi(int argc, char **argv)
 {
-    if (goodbyedpi_running) return -1;
+    if (goodbyedpi_running) {
+        // Already running
+        FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+        if (logfile) {
+            fprintf(logfile, "start_goodbyedpi called but already running\n");
+            fclose(logfile);
+        }
+        return -1;
+    }
+    
+    // Log arguments for debugging
+    FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "start_goodbyedpi called with %d arguments:\n", argc);
+        for (int i = 0; i < argc; i++) {
+            fprintf(logfile, "  argv[%d]: %s\n", i, argv[i]);
+        }
+        fclose(logfile);
+    }
+    
+    // WinDivert sürücüsünün durumunu kontrol et
+    if (!check_windivert_driver()) {
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "WinDivert driver failed to load. Check your installation.\n");
+            fclose(logfile);
+        }
+        return -4;
+    }
+
+    // Blacklist dosyasını kontrol et
+    if (argc > 0 && strstr(argv[0], "russia-blacklist")) {
+        if (!check_blacklist_file("..\\russia-blacklist.txt")) {
+            logfile = fopen("goodbyedpi_error.log", "a");
+            if (logfile) {
+                fprintf(logfile, "Blacklist file not found: ..\\russia-blacklist.txt\n");
+                fclose(logfile);
+            }
+            return -5;
+        }
+    }
+
+    // Copy arguments to prevent issues with strtok in parse_args
     char **copy = calloc(argc + 1, sizeof(char*));
-    if (!copy) return -2;
-    for (int i = 0; i < argc; ++i) copy[i] = _strdup(argv[i]);
+    if (!copy) {
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "Failed to allocate memory for arguments\n");
+            fclose(logfile);
+        }
+        return -2;
+    }
+    
+    for (int i = 0; i < argc; ++i) {
+        copy[i] = _strdup(argv[i]);
+        if (!copy[i]) {
+            logfile = fopen("goodbyedpi_error.log", "a");
+            if (logfile) {
+                fprintf(logfile, "Failed to duplicate argument %d\n", i);
+                fclose(logfile);
+            }
+            // Clean up previously allocated memory
+            for (int j = 0; j < i; ++j) {
+                free(copy[j]);
+            }
+            free(copy);
+            return -2;
+        }
+    }
+    
+    // Reset exiting flag on start
+    exiting = 0;
     goodbyedpi_running = 1;
+    
+    // Create thread
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "Creating thread for dpi_thread\n");
+        fclose(logfile);
+    }
+    
     goodbyedpi_thread = (HANDLE)_beginthreadex(NULL, 0, dpi_thread, copy, 0, NULL);
-    if (!goodbyedpi_thread) { goodbyedpi_running = 0; return -3; }
+    if (!goodbyedpi_thread) {
+        goodbyedpi_running = 0;
+        
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "Failed to create thread, error code: %d\n", GetLastError());
+            fclose(logfile);
+        }
+        
+        // Free copy if thread creation failed
+        for (int i = 0; i < argc; ++i) free(copy[i]);
+        free(copy);
+        return -3;
+    }
+    
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "Thread created successfully\n");
+        fclose(logfile);
+    }
+    
     return 0;
 }
 
 void stop_goodbyedpi(void)
 {
-    if (!goodbyedpi_running) return;
-    TerminateThread(goodbyedpi_thread, 0);
+    if (!goodbyedpi_running || !goodbyedpi_thread) return;
+    // Signal the thread to exit
+    exiting = 1;
+    // Shutdown WinDivert handles to unblock WinDivertRecv
+    deinit_all(); // Call deinit_all here to potentially unblock the recv call
+    // Wait for the thread to finish gracefully
+    WaitForSingleObject(goodbyedpi_thread, INFINITE);
     CloseHandle(goodbyedpi_thread);
     goodbyedpi_thread = NULL;
     goodbyedpi_running = 0;
+    // Reset exiting flag after stopping
+    exiting = 0;
 }
 
 int is_goodbyedpi_running(void) { return goodbyedpi_running; }
@@ -141,7 +501,7 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
  } while (0)
  
  #define TCP_HANDLE_OUTGOING_TTL_PARSE_PACKET_IF() \
-     if ((packet_v4 && tcp_handle_outgoing(&ppIpHdr->SrcAddr, &ppIpHdr->DstAddr, \
+     if ((packet_v4 && tcp_handle_outgoing(ipv4_src_arr, ipv4_dst_arr, \
                          ppTcpHdr->SrcPort, ppTcpHdr->DstPort, \
                          &tcp_conn_info, 0)) \
          || \
@@ -189,7 +549,6 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
  };
  
  static int running_from_service = 0;
- static int exiting = 0;
  static HANDLE filters[MAX_FILTERS];
  static int filter_num = 0;
  static const char http10_redirect_302[] = "HTTP/1.0 302 ";
@@ -401,8 +760,14 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
  
  void deinit_all() {
      for (int i = 0; i < filter_num; i++) {
-         deinit(filters[i]);
+         // Check if handle is valid before trying to close
+         if (filters[i] && filters[i] != INVALID_HANDLE_VALUE) {
+             deinit(filters[i]);
+             filters[i] = NULL; // Mark as closed
+         }
      }
+     // Reset filter_num after closing all
+     // filter_num = 0; // Keep filter_num as it indicates how many were opened initially
  }
  
  static void sigint_handler(int sig __attribute__((unused))) {
@@ -635,6 +1000,9 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
      PWINDIVERT_UDPHDR ppUdpHdr;
      conntrack_info_t dns_conn_info;
      tcp_conntrack_info_t tcp_conn_info;
+     // Temporary arrays for IPv4 addresses to fix warnings
+     uint32_t ipv4_src_arr[4];
+     uint32_t ipv4_dst_arr[4];
  
      int do_passivedpi = 0, do_block_quic = 0,
          do_fragment_http = 0,
@@ -1189,6 +1557,12 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
      signal(SIGINT, sigint_handler);
  
      while (1) {
+         // Check for exit signal before blocking on WinDivertRecv
+         if (exiting) {
+             printf("Exiting gracefully...\n");
+             break;
+         }
+ 
          if (WinDivertRecv(w_filter, packet, sizeof(packet), &packetLen, &addr)) {
              debug("Got %s packet, len=%d!\n", addr.Outbound ? "outbound" : "inbound",
                     packetLen);
@@ -1209,6 +1583,11 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
              {
                  if (ppIpHdr) {
                      packet_v4 = 1;
+                     // Prepare IPv4 addresses in IPv6-compatible arrays
+                     memset(ipv4_src_arr, 0, sizeof(ipv4_src_arr));
+                     memset(ipv4_dst_arr, 0, sizeof(ipv4_dst_arr));
+                     ipv4_src_arr[0] = ppIpHdr->SrcAddr;
+                     ipv4_dst_arr[0] = ppIpHdr->DstAddr;
                      if (ppTcpHdr) {
                          packet_type = ipv4_tcp;
                          if (packet_data) {
@@ -1402,12 +1781,13 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
                      ppTcpHdr->Syn == 1 && ppTcpHdr->Ack == 1) {
  
                      if (do_fake_packet && (do_auto_ttl || ttl_min_nhops)) {
-                         if (!((packet_v4 && tcp_handle_incoming(&ppIpHdr->SrcAddr, &ppIpHdr->DstAddr,
+                         // Use temporary arrays for IPv4
+                         if (!((packet_v4 && tcp_handle_incoming(ipv4_src_arr, ipv4_dst_arr,
                                          ppTcpHdr->SrcPort, ppTcpHdr->DstPort,
                                          0, ppIpHdr->TTL))
                              ||
-                             (packet_v6 && tcp_handle_incoming((uint32_t*)&ppIpV6Hdr->SrcAddr,
-                                         (uint32_t*)&ppIpV6Hdr->DstAddr,
+                             (packet_v6 && tcp_handle_incoming((uint32_t*)ppIpV6Hdr->SrcAddr,
+                                         (uint32_t*)ppIpV6Hdr->DstAddr,
                                          ppTcpHdr->SrcPort, ppTcpHdr->DstPort,
                                          1, ppIpV6Hdr->HopLimit))))
                          {
@@ -1433,7 +1813,8 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
                       (do_dnsv6_redirect && (packet_type == ipv6_udp_data)))
              {
                  if (!addr.Outbound) {
-                     if ((packet_v4 && dns_handle_incoming(&ppIpHdr->DstAddr, ppUdpHdr->DstPort,
+                     // Use temporary arrays for IPv4
+                     if ((packet_v4 && dns_handle_incoming(ipv4_dst_arr, ppUdpHdr->DstPort, // Note: Using DstAddr as source for incoming DNS reply matching
                                          packet_data, packet_dataLen,
                                          &dns_conn_info, 0))
                          ||
@@ -1442,7 +1823,7 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
                                          &dns_conn_info, 1)))
                      {
                          if (packet_v4)
-                             ppIpHdr->SrcAddr = dns_conn_info.dstip[0];
+                             ppIpHdr->SrcAddr = dns_conn_info.dstip[0]; // Assuming dstip[0] holds original dest IP for reply source
                          else if (packet_v6)
                              ipv6_copy_addr(ppIpV6Hdr->SrcAddr, dns_conn_info.dstip);
                          ppUdpHdr->DstPort = dns_conn_info.srcport;
@@ -1461,8 +1842,9 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
                  }
  
                  else if (addr.Outbound) {
-                     if ((packet_v4 && dns_handle_outgoing(&ppIpHdr->SrcAddr, ppUdpHdr->SrcPort,
-                                         &ppIpHdr->DstAddr, ppUdpHdr->DstPort,
+                     // Use temporary arrays for IPv4
+                     if ((packet_v4 && dns_handle_outgoing(ipv4_src_arr, ppUdpHdr->SrcPort,
+                                         ipv4_dst_arr, ppUdpHdr->DstPort,
                                          packet_data, packet_dataLen, 0))
                          ||
                          (packet_v6 && dns_handle_outgoing(ppIpV6Hdr->SrcAddr, ppUdpHdr->SrcPort,
@@ -1499,10 +1881,17 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
              }
          }
          else {
-             if (!exiting)
-                 printf("Error receiving packet!\n");
-             break;
+             // Check if exiting is the reason for the error
+             if (exiting) {
+                 printf("Exiting gracefully after WinDivertRecv signal...\n");
+             } else {
+                 // Report error only if not exiting
+                 DWORD error_code = GetLastError();
+                 printf("Error receiving packet: %lu\n", error_code);
+             }
+             break; // Exit loop on error or signal
          }
      }
+     // Cleanup is handled by dpi_thread or stop_goodbyedpi calling deinit_all
      return 0;
  }

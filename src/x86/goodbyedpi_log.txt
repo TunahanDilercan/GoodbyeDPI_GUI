@@ -1,0 +1,38 @@
+=== Log başlatıldı - May  1 2025 ===
+[GUI] WM_CREATE: Initialized scripts, count=10
+[GUI] WM_CREATE: Got scripts, scripts_size=10
+[GUI] WM_CREATE: Loaded selected script index=8
+[GUI] WM_CREATE: Set selected_script=8
+[2025-05-01 16:20:29] handle_start called, is_running=0
+[2025-05-01 16:20:29] Checking admin privileges
+Checking administrator privileges...
+Administrator check result: YES
+[2025-05-01 16:20:29] Admin check passed
+[2025-05-01 16:20:29] Checking WinDivert.dll
+Checking WinDivert.dll...
+WinDivert.dll found next to executable: D:\FilesHan\kod\GUI\v2.1\GoodbyeDPI-master\src\x86\WinDivert.dll
+[2025-05-01 16:20:29] WinDivert.dll check passed
+[2025-05-01 16:20:29] Installing WinDivert driver
+Attempting to install WinDivert driver...
+[2025-05-01 16:20:33] handle_start called, is_running=0
+[2025-05-01 16:20:33] Checking admin privileges
+Checking administrator privileges...
+Administrator check result: YES
+[2025-05-01 16:20:33] Admin check passed
+[2025-05-01 16:20:33] Checking WinDivert.dll
+Checking WinDivert.dll...
+WinDivert.dll found next to executable: D:\FilesHan\kod\GUI\v2.1\GoodbyeDPI-master\src\x86\WinDivert.dll
+[2025-05-01 16:20:33] WinDivert.dll check passed
+[2025-05-01 16:20:33] Installing WinDivert driver
+Attempting to install WinDivert driver...
+[2025-05-01 16:20:41] handle_start called, is_running=0
+[2025-05-01 16:20:41] Checking admin privileges
+Checking administrator privileges...
+Administrator check result: YES
+[2025-05-01 16:20:41] Admin check passed
+[2025-05-01 16:20:41] Checking WinDivert.dll
+Checking WinDivert.dll...
+WinDivert.dll found next to executable: D:\FilesHan\kod\GUI\v2.1\GoodbyeDPI-master\src\x86\WinDivert.dll
+[2025-05-01 16:20:41] WinDivert.dll check passed
+[2025-05-01 16:20:41] Installing WinDivert driver
+Attempting to install WinDivert driver...

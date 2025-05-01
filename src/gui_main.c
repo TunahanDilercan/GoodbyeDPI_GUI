@@ -1,15 +1,18 @@
+/*
+ * GoodbyeDPI GUI implementation
+ */
+
 #include <windows.h>
 #include <shellapi.h>
+#include <commctrl.h>
+#include <time.h>
+
 #include "goodbyedpi.h"
 #include "scripts.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <shlobj.h> // Başlangıç klasörü için
-#include <uxtheme.h> // Tema kontrolü için
-#include <vssym32.h> // Tema sembolleri
-#include <commctrl.h> // Common controls
 
+#include <shlobj.h> // For startup folder
+#include <uxtheme.h> // For theme control
+#include <vssym32.h> // Theme symbols
 #define WM_TRAY   (WM_USER+1)
 #define ID_TRAY   1
 #define IDM_EXIT  9001
@@ -21,44 +24,98 @@
 #define IDM_AUTOSTART  4101
 #define IDM_MINIMIZE   4102
 #define IDM_ABOUT      4200
-// İkon ID'leri RC dosyası ile uyumlu olarak güncellendi
-#define IDI_ICON_MAIN    101  // Ana ikon (EXE)
-#define IDI_ICON_RUNNING 102  // Çalışırken ikon
-#define IDI_ICON_PAUSED  103  // Durdurulmuşken ikon
+#define ID_TRAY_EXIT 1001
+#define ID_TRAY_START 1002
+#define ID_TRAY_STOP 1003
+#define ID_TRAY_SCRIPT_FIRST 2000
+#define ID_TRAY_AUTOSTART 3000
+#define ID_TRAY_STATUS 3001
+#define ID_TRAY_ABOUT 3002
+#define ID_TRAY_MENU_START 4001
+#define ID_TRAY_MENU_STOP 4002
+#define ID_TRAY_MENU_SELECT_FIRST 5000
+#define ID_TRAY_MENU_ABOUT 6000
+#define ID_TRAY_MENU_EXIT 7000
+// Icon IDs updated to match with RC file
+#define IDI_ICON_MAIN    101  // Main icon (EXE)
+#define IDI_ICON_RUNNING 102  // Running icon
+#define IDI_ICON_PAUSED  103  // Paused icon
 
-#define WM_APP_RESTART (WM_APP+100) // Uygulamanın yeniden başlatılması için kullanılacak özel mesaj
-#define WM_APP_BALLOON_CLICK (WM_APP+101) // Balon bildirimine tıklandığında
+#define WM_APP_RESTART (WM_APP+100) // Custom message for restarting the application
+#define WM_APP_BALLOON_CLICK (WM_APP+101) // When balloon notification is clicked
 
-// Watchdog zamanlayıcısı ID'si
+// Watchdog timer ID
 #define IDT_WATCHDOG 1001
-#define WATCHDOG_INTERVAL 10000 // 10 saniye
+#define WATCHDOG_INTERVAL 10000 // 10 seconds
 
-// Varsayılan script ismi, otomatik olarak seçilecek
-#define DEFAULT_SCRIPT_NAME "[TR] Alternative1"
+// Default script name, will be selected automatically
+#define DEFAULT_SCRIPT_NAME "Any Country with DNS Redirector"
 
 static NOTIFYICONDATA nid = {0};
 static HMENU hMenu;
-static int last_selected_idx = -1; // Son seçilen script'in index'i
-static int is_running = 0; // Programın çalışıp çalışmadığını takip eder
-static int error_recovery = 0; // Hata kurtarma modu
-static HANDLE hMutex = NULL; // Birden fazla kopya çalışmasını engellemek için mutex
-static int tray_added = 0; // Tray simgesinin eklenip eklenmediğini takip eder
-static HICON hIconPaused = NULL; // Durdurulmuş ikon
-static HICON hIconRunning = NULL; // Çalışıyor ikon
+static int last_selected_idx = -1; // Last selected script index
+static int is_running = 0; // Tracks whether the program is running
+static int error_recovery = 0; // Error recovery mode
+static HANDLE hMutex = NULL; // Mutex to prevent multiple instances
+static int tray_added = 0; // Tracks whether the tray icon is added
+static HICON hIconPaused = NULL; // Paused icon
+static HICON hIconRunning = NULL; // Running icon
+static DWORD start_time = 0; // Start time of operation
+static HWND g_hwnd = NULL; // Global window handle
+static HMENU hPopupMenu = NULL; // Popup menu handle
 
-// Sanitize name - menüde görünecek script isimleri için kullanılır
+// Define menu constants that were referenced but not defined
+#define MENU_START ID_TRAY_MENU_START
+#define MENU_PAUSE ID_TRAY_MENU_STOP
+#define MENU_EXIT ID_TRAY_MENU_EXIT
+#define MENU_ABOUT ID_TRAY_MENU_ABOUT
+#define MENU_SHOW ID_TRAY_STATUS
+#define MENU_SCRIPT_BASE ID_TRAY_SCRIPT_FIRST
+
+// Variables to track process state
+static int process_active = 0;
+static int selected_script = -1; 
+static int scripts_size = 0;
+static Script *scripts = NULL;
+static int script_count = 0;
+static char **script_names = NULL;
+
+// Forward declarations of functions to avoid implicit declaration errors
+HMENU create_popup_menu(void);
+static void handle_start(void);
+static void handle_stop(void);
+static void update_tray_icon(HWND hwnd);
+LONG WINAPI MyUnhandledExceptionFilter(EXCEPTION_POINTERS* ExInfo);
+
+// Function prototypes
+static BOOL set_autostart(BOOL enable);
+static BOOL get_autostart_enabled(void);
+static void show_balloon_notification(const char* title, const char* message, DWORD info_flags);
+static void show_status_dialog(HWND hwnd);
+static void show_about_dialog(HWND hwnd);
+static void terminate_goodbyedpi();
+static void save_selected_script(int index);
+static int load_selected_script();
+static BOOL prompt_iteration_continue(HWND hwnd);
+static BOOL check_and_copy_windivert_dll(void);
+static BOOL is_admin(void);  // is_admin() prototipi eklendi
+static void restart_as_admin(void);  // restart_as_admin() prototipi eklendi
+static BOOL install_windivert_driver(void); // install_windivert_driver() prototipi eklendi
+
+// Helper function to identify Turkey options
+int is_turkey_option(const char *name) {
+    return (strstr(name, "turkey") != NULL || 
+            strstr(name, "Turkey") != NULL || 
+            strstr(name, "TURKEY") != NULL);
+}
+
+// Sanitize name - used for script names displayed in the menu
 static void sanitize_name(const char *src, char *dst, size_t dst_size) {
     strncpy(dst, src, dst_size - 1);
     dst[dst_size - 1] = '\0';
 }
 
-// Bir string'in "Turkey" içerdiğini kontrol et (başlangıç default seçimi için)
-static int is_turkey_option(const char *name) {
-    return (name && (strstr(name, "Turkey") || strstr(name, "turkey") || 
-                     strstr(name, "TR") || strstr(name, "[TR]")));
-}
-
-// Belirtilen script adını script listesinde ara
+// Search for a script name in the script list
 static int find_script_by_name(const char *name) {
     if (!name) return -1;
     
@@ -72,743 +129,1152 @@ static int find_script_by_name(const char *name) {
     return -1;
 }
 
-// Varsayılan TR Alternatif1 script'ini bul
+// Function to find a default script
 static int find_default_script(void) {
-    int idx = find_script_by_name(DEFAULT_SCRIPT_NAME);
-    if (idx >= 0) return idx;
-    
-    // DEFAULT_SCRIPT_NAME bulunamazsa herhangi bir Turkey seçeneğini ara
-    int count = scripts_count();
-    for (int i = 0; i < count; i++) {
-        const char *name = script_get(i)->name;
-        if (is_turkey_option(name)) {
+    // First try to find a Turkey script as default
+    for (int i = 0; i < scripts_size; i++) {
+        if (is_turkey_option(scripts[i].name)) {
             return i;
         }
     }
     
-    // TR seçeneği de bulunamazsa ilk script'i döndür
-    return (scripts_count() > 0) ? 0 : -1;
+    // If no Turkey script is found, return first available script
+    if (scripts_size > 0) {
+        return 0;
+    }
+    
+    // No scripts available
+    return -1;
 }
 
-// Beklenmedik hatalar için global exception handler
-// Windows ile çakışmayı önlemek için isim değiştirildi
-LONG WINAPI MyUnhandledExceptionFilter(EXCEPTION_POINTERS* exceptionInfo) {
-    // Hata bilgisini loglama
-    FILE *f = fopen("goodbyedpi_error.log", "a");
-    if (f) {
-        SYSTEMTIME st;
-        GetLocalTime(&st);
+// Function to log errors with timestamp
+static void log_error(const char* format, ...) {
+    FILE* file = fopen("goodbyedpi_error.log", "a");
+    if (file) {
+        time_t now = time(NULL);
+        char time_buf[64];
+        struct tm *ptm = localtime(&now);
+        va_list args;
+        if (ptm) {
+            strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", ptm);
+        } else {
+            strcpy(time_buf, "unknown time");
+        }
+        fprintf(file, "[%s] ", time_buf);
+        va_start(args, format);
+        vfprintf(file, format, args);
+        va_end(args);
+        fprintf(file, "\n");
+        fclose(file);
         
-        fprintf(f, "[%02d/%02d/%04d %02d:%02d:%02d] Exception code: 0x%08X\n", 
-                st.wDay, st.wMonth, st.wYear, st.wHour, st.wMinute, st.wSecond,
-                exceptionInfo->ExceptionRecord->ExceptionCode);
-        fclose(f);
+        // Ayrıca hataları konsola da yazdır (debug için)
+        va_start(args, format);
+        fprintf(stderr, "[ERROR] ");
+        vfprintf(stderr, format, args);
+        va_end(args);
+        fprintf(stderr, "\n");
     }
-    
-    // GoodbyeDPI servisini durdurma - güvenlik için
-    script_stop();
-    
-    // Yeniden başlatma
-    char exe_path[MAX_PATH];
-    GetModuleFileName(NULL, exe_path, sizeof(exe_path));
-    
-    STARTUPINFO si = {0};
-    PROCESS_INFORMATION pi = {0};
-    si.cb = sizeof(si);
-    
-    // Uygulamayı kurtarma moduyla yeniden başlat
-    char cmdline[MAX_PATH + 20] = {0};
-    sprintf(cmdline, "\"%s\" -recovery", exe_path);
-    
-    if (CreateProcess(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-    }
-    
-    // Bu process'i sonlandır
-    return EXCEPTION_EXECUTE_HANDLER;
 }
 
-// Windows kendi exception handler'ını kullansın
+// Normal düzeyde log kaydı için yeni bir fonksiyon
+static void log_info(const char* format, ...) {
+    FILE* file = fopen("goodbyedpi_log.txt", "a");
+    if (file) {
+        time_t now = time(NULL);
+        char time_buf[64];
+        struct tm *ptm = localtime(&now);
+        va_list args;
+        if (ptm) {
+            strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", ptm);
+        } else {
+            strcpy(time_buf, "unknown time");
+        }
+        fprintf(file, "[%s] ", time_buf);
+        va_start(args, format);
+        vfprintf(file, format, args);
+        va_end(args);
+        fprintf(file, "\n");
+        fclose(file);
+    }
+}
+
+// Let Windows use its own exception handler
 static void setup_exception_handler(void) {
     SetUnhandledExceptionFilter(MyUnhandledExceptionFilter);
 }
 
-// Tray simgesini ekleme fonksiyonu iyileştirelim
-BOOL tray_add(HWND hWnd) {
-    ZeroMemory(&nid, sizeof(NOTIFYICONDATA));
-    nid.cbSize = sizeof(NOTIFYICONDATA);
-    nid.hWnd = hWnd;
-    nid.uID = ID_TRAY;
-    nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-    nid.uCallbackMessage = WM_TRAY;
-    nid.hIcon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON_PAUSED));
-    lstrcpy(nid.szTip, "GoodbyeDPI (Durduruldu)");
-    
-    BOOL result = Shell_NotifyIcon(NIM_ADD, &nid);
-    if (!result) {
-        DWORD error = GetLastError();
-        char errorMsg[256];
-        sprintf(errorMsg, "Sistem tepsisi simgesi eklenirken hata: %lu", error);
-        MessageBox(hWnd, errorMsg, "Sistem Tepsisi Hatası", MB_OK | MB_ICONERROR);
-        return FALSE;
-    }
-    
-    tray_added = 1;
-    return TRUE;
-}
-
-// Tray simgesini kaldıran fonksiyon
-BOOL tray_delete() {
-    BOOL result = Shell_NotifyIcon(NIM_DELETE, &nid);
-    if (!result) {
-        // Sessizce başarısız ol - uygulamayı kapatırken önemli değil
-        return FALSE;
-    }
-    tray_added = 0;
-    return TRUE;
-}
-
-// Tray simgesini güncelleyen fonksiyon
-void tray_update(int running) {
-    if (running) {
-        nid.hIcon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON_RUNNING));
-        lstrcpy(nid.szTip, "GoodbyeDPI (Çalışıyor)");
-    } else {
-        nid.hIcon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON_PAUSED));
-        lstrcpy(nid.szTip, "GoodbyeDPI (Durduruldu)");
-    }
-    
-    BOOL result = Shell_NotifyIcon(NIM_MODIFY, &nid);
-    if (!result) {
-        // Sistem tepsisi simgesi kaybolduysa, yeniden ekle
-        Shell_NotifyIcon(NIM_ADD, &nid);
-    }
-}
-
-// Windows'la başlatma için Başlangıç klasörüne kısayol oluştur (Registry yerine)
-static void set_autostart(void) {
-    char exe_path[MAX_PATH];
-    char startup_path[MAX_PATH];
-    char shortcut_path[MAX_PATH];
-    
-    // Exe dosyasının tam yolunu al
-    GetModuleFileName(NULL, exe_path, sizeof(exe_path));
-    
-    // Başlangıç klasörünü al
-    if (SUCCEEDED(SHGetFolderPath(NULL, CSIDL_STARTUP, NULL, 0, startup_path))) {
-        // Kısayol yolunu oluştur
-        sprintf(shortcut_path, "%s\\GoodbyeDPI_GUI.lnk", startup_path);
-        
-        // Kısayol dosyası oluştur (IShellLink ve IPersistFile kullanarak)
-        IShellLink* psl;
-        if (SUCCEEDED(CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, 
-                                     &IID_IShellLink, (LPVOID*)&psl))) {
-            IPersistFile* ppf;
-            
-            psl->lpVtbl->SetPath(psl, exe_path);
-            psl->lpVtbl->SetDescription(psl, "GoodbyeDPI GUI");
-            
-            if (SUCCEEDED(psl->lpVtbl->QueryInterface(psl, &IID_IPersistFile, (LPVOID*)&ppf))) {
-                WCHAR wsz[MAX_PATH];
-                
-                // ANSI'den UNICODE'a dönüştür
-                MultiByteToWideChar(CP_ACP, 0, shortcut_path, -1, wsz, MAX_PATH);
-                
-                // Kısayol dosyasını kaydet
-                ppf->lpVtbl->Save(ppf, wsz, TRUE);
-                
-                ppf->lpVtbl->Release(ppf);
-            }
-            
-            psl->lpVtbl->Release(psl);
-        }
-    }
-}
-
-// Otomatik başlatmayı kaldır (kısayolu sil)
-static void remove_autostart(void) {
-    char startup_path[MAX_PATH];
-    char shortcut_path[MAX_PATH];
-    
-    // Başlangıç klasörünü al
-    if (SUCCEEDED(SHGetFolderPath(NULL, CSIDL_STARTUP, NULL, 0, startup_path))) {
-        // Kısayol yolunu oluştur
-        sprintf(shortcut_path, "%s\\GoodbyeDPI_GUI.lnk", startup_path);
-        
-        // Dosya varsa sil
-        DeleteFile(shortcut_path);
-    }
-}
-
-// Service_remove.cmd scriptini yönetici olarak çalıştır
-static void run_service_remove_script(void) {
-    char script_path[MAX_PATH];
-    char exe_path[MAX_PATH];
-    char *p;
-    
-    // Exe dosyasının tam yolunu al
-    GetModuleFileName(NULL, exe_path, sizeof(exe_path));
-    
-    // Exe yolundan .exe kısmını sil
-    p = strrchr(exe_path, '\\');
-    if (p) {
-        *p = '\0';
-        
-        // Bir üst dizine git (src'den projenin ana dizinine)
-        p = strrchr(exe_path, '\\');
-        if (p) {
-            *p = '\0';
-            
-            // Service_remove.cmd yolunu oluştur
-            snprintf(script_path, sizeof(script_path), "%s\\scrpiler\\service_remove.cmd", exe_path);
-            
-            // UAC yükseltme ile çalıştır (yönetici haklarıyla)
-            ShellExecute(NULL, "runas", script_path, NULL, NULL, SW_HIDE); // SW_HIDE ile gizle
-        }
-    }
-}
-
-// Menü özelleştirme fonksiyonu
-static void customize_menu_appearance(HMENU menu) {
-    if (!menu) return;
-    
-    // Burada menü renklerini veya diğer görünüm ayarlarını yapabilirsiniz
-    // Windows 10/11'de bu genellikle gerekli değil ama sisteme göre özelleştirilebilir
-}
-
-// Hata oluştuğunda loglama yap
-static void log_error(const char* message) {
-    FILE* f = fopen("goodbyedpi_error.log", "a");
-    if (f) {
-        time_t now;
-        struct tm timeinfo;
+// Exception handler fonksiyonu
+LONG WINAPI MyUnhandledExceptionFilter(EXCEPTION_POINTERS* ExInfo) {
+    // Exception bilgilerini logla
+    FILE* file = fopen("goodbyedpi_error.log", "a");
+    if (file) {
+        time_t now = time(NULL);
         char time_buf[64];
+        struct tm *ptm = localtime(&now);
         
-        time(&now);
-        localtime_s(&timeinfo, &now);
-        strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+        if (ptm) {
+            strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", ptm);
+        } else {
+            strcpy(time_buf, "unknown time");
+        }
         
-        fprintf(f, "[%s] ERROR: %s\n", time_buf, message);
+        fprintf(file, "[%s] UNHANDLED EXCEPTION: Exception code: 0x%08X at address 0x%p\n", 
+                time_buf, ExInfo->ExceptionRecord->ExceptionCode, 
+                ExInfo->ExceptionRecord->ExceptionAddress);
+        fclose(file);
+    }
+    
+    // Başka exception handler var mı diye kontrol et
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+// Function to create the popup menu
+HMENU create_popup_menu(void) {
+    HMENU hPopup = CreatePopupMenu();
+    if (!hPopup) return NULL;
+
+    // Add Start/Stop buttons at the top
+    AppendMenu(hPopup, MF_STRING, ID_TRAY_START, "Start");
+    AppendMenu(hPopup, MF_STRING, ID_TRAY_STOP, "Stop");
+    AppendMenu(hPopup, MF_SEPARATOR, 0, NULL);
+
+    // Count available scripts
+    scripts_size = scripts_count();
+    scripts = scripts_get_all();
+
+    // Create categories submenu
+    HMENU hTurkeyMenu = CreatePopupMenu();
+    HMENU hOtherMenu = CreatePopupMenu();
+
+    // Add script options to appropriate submenus
+    int turkey_count = 0;
+    int other_count = 0;
+
+    for (int i = 0; i < scripts_size; i++) {
+        char sanitized_name[256] = {0};
+        sanitize_name(scripts[i].name, sanitized_name, sizeof(sanitized_name));
+        
+        MENUITEMINFO mii = {0};
+        mii.cbSize = sizeof(MENUITEMINFO);
+        mii.fMask = MIIM_ID | MIIM_STRING | MIIM_STATE;
+        mii.wID = ID_TRAY_SCRIPT_FIRST + i;
+        mii.dwTypeData = sanitized_name;
+        mii.fState = (i == last_selected_idx) ? MFS_CHECKED : MFS_UNCHECKED;
+        
+        // Add to Turkey menu if it contains TR or Turkey
+        if (is_turkey_option(sanitized_name)) {
+            InsertMenuItem(hTurkeyMenu, turkey_count++, TRUE, &mii);
+        } else {
+            InsertMenuItem(hOtherMenu, other_count++, TRUE, &mii);
+        }
+    }
+
+    // Add submenus to main menu
+    if (turkey_count > 0) {
+        AppendMenu(hPopup, MF_POPUP, (UINT_PTR)hTurkeyMenu, "Turkey Options");
+    } else {
+        DestroyMenu(hTurkeyMenu);
+    }
+
+    if (other_count > 0) {
+        AppendMenu(hPopup, MF_POPUP, (UINT_PTR)hOtherMenu, "Other Options");
+    } else {
+        DestroyMenu(hOtherMenu);
+    }
+
+    // Add separator and management options
+    AppendMenu(hPopup, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hPopup, MF_STRING | (get_autostart_enabled() ? MF_CHECKED : MF_UNCHECKED), 
+               ID_TRAY_AUTOSTART, "Run at startup");
+    AppendMenu(hPopup, MF_STRING, ID_TRAY_STATUS, "Show status");
+    AppendMenu(hPopup, MF_STRING, ID_TRAY_ABOUT, "About");
+    AppendMenu(hPopup, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hPopup, MF_STRING, ID_TRAY_EXIT, "Exit");
+
+    // Set proper item states
+    if (is_running) {
+        EnableMenuItem(hPopup, ID_TRAY_START, MF_GRAYED);
+        EnableMenuItem(hPopup, ID_TRAY_STOP, MF_ENABLED);
+    } else {
+        EnableMenuItem(hPopup, ID_TRAY_START, MF_ENABLED);
+        EnableMenuItem(hPopup, ID_TRAY_STOP, MF_GRAYED);
+    }
+    
+    return hPopup;
+}
+
+// Function to update tray icon based on application state
+static void update_tray_icon(HWND hwnd) {
+    // Make sure the icons are loaded
+    if (!hIconPaused) {
+        hIconPaused = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON_PAUSED));
+    }
+    if (!hIconRunning) {
+        hIconRunning = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON_RUNNING));
+    }
+    
+    // Update the icon
+    nid.hIcon = is_running ? hIconRunning : hIconPaused;
+    // Update tooltip
+    if (is_running && selected_script >= 0 && selected_script < scripts_size) {
+        char buf[128];
+        _snprintf(buf, sizeof(buf), "GoodbyeDPI - Running: %s", 
+                 scripts[selected_script].name);
+        _snprintf(nid.szTip, sizeof(nid.szTip), "%s", buf);
+    } else {
+        _snprintf(nid.szTip, sizeof(nid.szTip), "GoodbyeDPI - Stopped");
+    }
+    
+    Shell_NotifyIcon(NIM_MODIFY, &nid);
+}
+
+// Start the DPI bypass process
+static void handle_start(void) {
+    log_info("handle_start called, is_running=%d", is_running);
+    
+    if (is_running) {
+        log_info("Already running, ignoring start request");
+        return; // Already running
+    }
+    
+    // Admin kontrolü yap
+    log_info("Checking admin privileges");
+    if (!is_admin()) {
+        log_error("Attempting to start without administrator privileges");
+        show_balloon_notification("Error", 
+                               "GoodbyeDPI requires administrator privileges to run", 
+                               NIIF_ERROR);
+        restart_as_admin();
+        return;
+    }
+    log_info("Admin check passed");
+    
+    // WinDivert.dll kontrolü yap
+    log_info("Checking WinDivert.dll");
+    if (!check_and_copy_windivert_dll()) {
+        log_error("WinDivert.dll could not be found or copied");
+        show_balloon_notification("Error", 
+                               "Required WinDivert.dll file not found or could not be copied", 
+                               NIIF_ERROR);
+        return;
+    }
+    log_info("WinDivert.dll check passed");
+    
+    // WinDivert sürücüsünü yükle
+    log_info("Installing WinDivert driver");
+    if (!install_windivert_driver()) {
+        log_error("Failed to install WinDivert driver");
+        show_balloon_notification("Error", 
+                               "Failed to install WinDivert driver", 
+                               NIIF_ERROR);
+        return;
+    }
+    log_info("WinDivert driver installed successfully");
+    
+    // Script kontrolü yap - eğer script seçili değilse varsayılanı kullan
+    log_info("Checking script selection (selected_script=%d, scripts_size=%d)", selected_script, scripts_size);
+    if (selected_script < 0 || selected_script >= scripts_size) {
+        log_info("No valid script selected, trying to get default script");
+        selected_script = get_default_script_index();
+        if (selected_script >= 0) {
+            last_selected_idx = selected_script;
+            save_selected_script(selected_script);
+            log_info("Using default script: %s (index=%d)", scripts[selected_script].name, selected_script);
+        } else {
+            log_error("No valid script found, cannot start");
+            show_balloon_notification("Error", 
+                                  "No valid configuration found", 
+                                  NIIF_ERROR);
+            return;
+        }
+    } else {
+        log_info("Using script: %s (index=%d)", scripts[selected_script].name, selected_script);
+    }
+    
+    // Set running flag first, to avoid race conditions
+    log_info("Başlatma işlemini yapıyorum: %s", scripts[selected_script].name);
+    
+    // Start the selected script
+    int result = script_run(selected_script);
+    log_info("script_run returned %d", result);
+    
+    if (result == 0) {
+        // Only set is_running after successful start
+        is_running = 1;
+        start_time = GetTickCount();
+        log_info("Script started successfully, is_running=1");
+        
+        // Update UI state
+        update_tray_icon(g_hwnd);
+        
+        if (hPopupMenu) {
+            // Disable start button, enable stop button
+            EnableMenuItem(hPopupMenu, ID_TRAY_START, MF_GRAYED);
+            EnableMenuItem(hPopupMenu, ID_TRAY_STOP, MF_ENABLED);
+        }
+        
+        // Show success notification
+        show_balloon_notification("GoodbyeDPI Started", 
+                                "DPI circumvention is now active", 
+                                NIIF_INFO);
+    }
+    else {
+        log_error("Failed to start script: %s, error code: %d", scripts[selected_script].name, result);
+        show_balloon_notification("Error", 
+                                "Failed to start DPI circumvention", 
+                                NIIF_ERROR);
+    }
+}
+
+// Stop the DPI bypass process
+static void handle_stop(void) {
+    log_info("handle_stop çağrıldı, is_running=%d", is_running);
+    
+    if (!is_running) {
+        log_info("Zaten durdurulmuş, durdurma isteği yok sayılıyor");
+        return; // Already stopped
+    }
+
+    log_info("GoodbyeDPI durdurulacak");
+    script_stop();
+    
+    // Wait a bit to ensure the script_stop completed
+    Sleep(100);
+    
+    // Verify it's actually stopped by checking the running state
+    if (is_goodbyedpi_running()) {
+        log_error("GoodbyeDPI durdurma başarısız, zorla kapatılıyor");
+        terminate_goodbyedpi();
+    } else {
+        log_info("GoodbyeDPI başarıyla durduruldu");
+    }
+
+    // Update UI state
+    is_running = 0;
+    update_tray_icon(g_hwnd);
+
+    // Also update menu state if we have the popup menu
+    if (hPopupMenu) {
+        // Enable start button, disable stop button
+        EnableMenuItem(hPopupMenu, ID_TRAY_START, MF_ENABLED);
+        EnableMenuItem(hPopupMenu, ID_TRAY_STOP, MF_GRAYED);
+    }
+    
+    show_balloon_notification("GoodbyeDPI Stopped", 
+                              "DPI circumvention is now inactive", 
+                              NIIF_INFO);
+    
+    log_info("handle_stop tamamlandı, is_running=0");
+}
+
+// Function to get the directory of the executable
+static void get_executable_directory(char *path, size_t size) {
+    GetModuleFileName(NULL, path, size);
+    char* lastSlash = strrchr(path, '\\');
+    if (lastSlash) {
+        *lastSlash = '\0'; // Truncate at last slash to get directory
+    }
+}
+
+// Function to build config path
+static void get_config_path(char *path, size_t size) {
+    char exePath[MAX_PATH] = {0};
+    get_executable_directory(exePath, MAX_PATH);
+    _snprintf(path, size, "%s\\last_selected.dat", exePath);
+}
+
+// Save selected script to file
+static void save_selected_script(int index) {
+    char configPath[MAX_PATH] = {0};
+    get_config_path(configPath, MAX_PATH);
+    
+    FILE *f = fopen(configPath, "wb");
+    if (f) {
+        fwrite(&index, sizeof(int), 1, f);
         fclose(f);
     }
 }
 
-// Birleştirilmiş "devam et" mesajı için yardımcı fonksiyon
-static int show_continue_dialog(HWND hwnd) {
-    return MessageBox(hwnd, 
-        "DPI atlatma zaten çalışıyor. Yeni iterasyonla devam edilsin mi?", 
-        "GoodbyeDPI", 
-        MB_YESNO | MB_ICONQUESTION);
-}
-
-static void restart_with_script(int script_idx) {
-    if (script_idx < 0 || script_idx >= scripts_count()) return;
+// Load selected script from file
+static int load_selected_script() {
+    char configPath[MAX_PATH] = {0};
+    get_config_path(configPath, MAX_PATH);
     
-    // Çalışan işlemi durdur
-    script_stop();
-    // Küçük bir gecikme ekle
-    Sleep(500);
-    // Yeni script ile başlat
-    script_start(script_idx);
-    // UI durumunu güncelle
-    is_running = 1;
-}
-
-// Balon bildirimi gösterme fonksiyonu
-static void show_balloon_tip(HWND hwnd, const char* title, const char* message, DWORD icon_type) {
-    if (!tray_added) return;
-    
-    // Balon bildirimi özelliğini ekle
-    nid.uFlags |= NIF_INFO;
-    lstrcpy(nid.szInfoTitle, title);
-    lstrcpy(nid.szInfo, message);
-    nid.dwInfoFlags = icon_type; // NIIF_INFO, NIIF_WARNING, NIIF_ERROR
-    nid.uTimeout = 10000; // 10 saniye
-    
-    Shell_NotifyIcon(NIM_MODIFY, &nid);
-    
-    // Flags'i eski haline getir
-    nid.uFlags &= ~NIF_INFO;
-}
-
-// Durum gösterme fonksiyonu
-static void show_status_window(HWND parent) {
-    // Basit bir durum penceresi oluştur
-    HWND status_window = CreateWindowEx(
-        WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
-        "STATIC",
-        "GoodbyeDPI Durum Bilgisi",
-        WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME,
-        100, 100, 350, 200,
-        parent,
-        NULL,
-        GetModuleHandle(NULL),
-        NULL
-    );
-    
-    if (!status_window) return;
-    
-    // Çalışma durumu metni
-    char status_text[512];
-    sprintf(status_text, "DPI Bypass Durumu: %s\n\n", 
-            is_running ? "ÇALIŞIYOR" : "DURDURULDU");
-    
-    // Eğer çalışıyorsa, hangi mod kullanıldığını ekle
-    if (is_running && last_selected_idx >= 0) {
-        const char* script_name = script_get(last_selected_idx)->name;
-        char display_name[128];
-        sanitize_name(script_name, display_name, sizeof(display_name));
+    int idx = -1;
+    FILE *f = fopen(configPath, "rb");
+    if (f) {
+        fread(&idx, sizeof(int), 1, f);
+        fclose(f);
         
-        strcat(status_text, "Aktif Mod: ");
-        strcat(status_text, display_name);
-        strcat(status_text, "\n\n");
-        
-        // Çalışma süresi eklenebilir (gelecek sürüm için)
-        // ...
-        
-        // İstatistikler eklenebilir (gelecek sürüm için)
-        strcat(status_text, "İstatistikler gelecek sürümde eklenecektir.");
+        // Verify the index is valid
+        if (idx < 0 || idx >= scripts_count()) {
+            idx = find_default_script();
+        }
+    } else {
+        // Set a default script if no saved selection
+        idx = find_default_script();
     }
     
-    // Metin kontrolü ekle
-    HWND status_text_ctrl = CreateWindowEx(
-        0,
-        "STATIC",
-        status_text,
-        WS_CHILD | WS_VISIBLE | SS_LEFT,
-        10, 10, 330, 150,
-        status_window,
-        NULL,
-        GetModuleHandle(NULL),
-        NULL
-    );
+    return idx;
+}
+
+// Improved function to check and copy WinDivert.dll
+static BOOL check_and_copy_windivert_dll(void) {
+    char exe_dir[MAX_PATH] = {0};
+    char source_path[MAX_PATH] = {0};
+    char target_path[MAX_PATH] = {0};
+    DWORD attrs;
+    FILE *logfile;
+
+    // Log function entry
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "Checking WinDivert.dll...\n");
+        fclose(logfile);
+    }
+
+    // Get executable directory
+    get_executable_directory(exe_dir, MAX_PATH);
+
+    // Check if WinDivert.dll exists next to the executable
+    snprintf(target_path, MAX_PATH, "%s\\WinDivert.dll", exe_dir);
+    attrs = GetFileAttributesA(target_path);
     
-    // Tamam butonu ekle
-    HWND ok_button = CreateWindowEx(
-        0,
-        "BUTTON",
-        "Tamam",
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        140, 160, 70, 25,
-        status_window,
-        (HMENU)IDOK,
-        GetModuleHandle(NULL),
-        NULL
-    );
-    
-    ShowWindow(status_window, SW_SHOW);
-    
-    // Mesaj döngüsü
-    MSG msg;
-    BOOL ret;
-    while ((ret = GetMessage(&msg, NULL, 0, 0)) != 0) {
-        if (ret == -1) break;
-        
-        if (msg.message == WM_COMMAND && LOWORD(msg.wParam) == IDOK) {
-            DestroyWindow(status_window);
-            break;
+    if (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        // DLL exists next to executable
+        logfile = fopen("goodbyedpi_log.txt", "a");
+        if (logfile) {
+            fprintf(logfile, "WinDivert.dll found next to executable: %s\n", target_path);
+            fclose(logfile);
+        }
+        return TRUE;
+    }
+
+    // DLL not found next to executable, try to copy from system architecture appropriate location
+#ifdef _WIN64
+    snprintf(source_path, MAX_PATH, "%s\\x86_64\\WinDivert.dll", exe_dir);
+#else
+    snprintf(source_path, MAX_PATH, "%s\\x86\\WinDivert.dll", exe_dir);
+#endif
+
+    attrs = GetFileAttributesA(source_path);
+    if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        // Source DLL not found in subfolder
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "WinDivert.dll not found in expected subfolder: %s\n", source_path);
+            fclose(logfile);
         }
         
+        // Check also in binary folder as a fallback
+#ifdef _WIN64
+        snprintf(source_path, MAX_PATH, "%s\\..\\binary\\amd64\\WinDivert.dll", exe_dir);
+#else
+        snprintf(source_path, MAX_PATH, "%s\\..\\binary\\x86\\WinDivert.dll", exe_dir);
+#endif
+        
+        attrs = GetFileAttributesA(source_path);
+        if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+            logfile = fopen("goodbyedpi_error.log", "a");
+            if (logfile) {
+                fprintf(logfile, "WinDivert.dll not found in binary folder either: %s\n", source_path);
+                fclose(logfile);
+            }
+            return FALSE;
+        }
+    }
+
+    // Copy the DLL to executable directory
+    if (!CopyFileA(source_path, target_path, FALSE)) {
+        DWORD error = GetLastError();
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "Failed to copy WinDivert.dll from %s to %s, error %lu\n", 
+                    source_path, target_path, error);
+            fclose(logfile);
+        }
+        return FALSE;
+    }
+
+    // Successfully copied
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "Successfully copied WinDivert.dll from %s to %s\n", source_path, target_path);
+        fclose(logfile);
+    }
+    return TRUE;
+}
+
+// Improved function to check for administrator privileges
+static BOOL is_admin(void) {
+    BOOL is_admin_user = FALSE;
+    HANDLE token = NULL;
+    TOKEN_ELEVATION elevation;
+    DWORD size = sizeof(TOKEN_ELEVATION);
+    FILE *logfile;
+
+    // Log function entry
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "Checking administrator privileges...\n");
+        fclose(logfile);
+    }
+
+    // Get current process token
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        DWORD error = GetLastError();
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "OpenProcessToken failed with error %lu\n", error);
+            fclose(logfile);
+        }
+        return FALSE;
+    }
+
+    // Check token elevation
+    if (GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size)) {
+        is_admin_user = elevation.TokenIsElevated;
+    }
+    else {
+        DWORD error = GetLastError();
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "GetTokenInformation failed with error %lu\n", error);
+            fclose(logfile);
+        }
+    }
+
+    CloseHandle(token);
+
+    // Log result
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "Administrator check result: %s\n", is_admin_user ? "YES" : "NO");
+        fclose(logfile);
+    }
+
+    return is_admin_user;
+}
+
+// Function to restart the application with admin privileges
+static void restart_as_admin(void) {
+    char exePath[MAX_PATH];
+    SHELLEXECUTEINFO sei = {0};
+    
+    // Get the path of the current executable
+    GetModuleFileName(NULL, exePath, MAX_PATH);
+    
+    // Log the restart attempt
+    FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "Attempting to restart with administrator privileges\n");
+        fclose(logfile);
+    }
+    
+    // Setup the execution info to run with admin privileges
+    sei.cbSize = sizeof(SHELLEXECUTEINFO);
+    sei.lpVerb = "runas";  // Request elevated permissions
+    sei.lpFile = exePath;
+    sei.nShow = SW_NORMAL;
+    
+    // Execute the process with elevated permissions
+    if (!ShellExecuteEx(&sei)) {
+        DWORD error = GetLastError();
+        
+        // If the error is ERROR_CANCELLED, the user declined the UAC prompt
+        if (error == ERROR_CANCELLED) {
+            MessageBox(NULL, 
+                      "GoodbyeDPI requires administrator privileges to run.\n"
+                      "Please restart the application and accept the UAC prompt.", 
+                      "Administrator Rights Required", 
+                      MB_ICONERROR);
+        } else {
+            char errorMsg[256];
+            sprintf(errorMsg, "Failed to restart with administrator privileges.\nError code: %lu", error);
+            MessageBox(NULL, errorMsg, "Error", MB_ICONERROR);
+        }
+        
+        // Log the error
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "Failed to restart with administrator privileges. Error code: %lu\n", error);
+            fclose(logfile);
+        }
+    }
+    
+    // Exit the current instance
+    exit(1);
+}
+
+// Yeni fonksiyon: Yönetici ayrıcalıklarıyla WinDivert sürücüsünü kurma
+static BOOL install_windivert_driver(void) {
+    char szDriverPath[MAX_PATH];
+    char szExePath[MAX_PATH];
+    DWORD dwResult;
+    SC_HANDLE schSCManager = NULL;
+    SC_HANDLE schService = NULL;
+    BOOL success = FALSE;
+    FILE *logfile = NULL;
+    
+    // Log bilgisi
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "Attempting to install WinDivert driver...\n");
+        fclose(logfile);
+    }
+    
+    // Önce mevcut dizini al
+    GetModuleFileName(NULL, szExePath, MAX_PATH);
+    char *lastSlash = strrchr(szExePath, '\\');
+    if (lastSlash) {
+        *lastSlash = '\0'; // Truncate at last slash to get directory
+    }
+    
+    // 32-bit sistem sürücü dosyası
+    sprintf(szDriverPath, "%s\\WinDivert32.sys", szExePath);
+    
+    // Hizmet yöneticisini aç
+    schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
+    if (schSCManager == NULL) {
+        dwResult = GetLastError();
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "OpenSCManager failed: %lu\n", dwResult);
+            fclose(logfile);
+        }
+        return FALSE;
+    }
+    
+    // Hizmet zaten var mı kontrol et
+    schService = OpenService(schSCManager, "WinDivert", SERVICE_QUERY_STATUS);
+    if (schService) {
+        // Hizmet zaten var
+        SERVICE_STATUS status;
+        if (QueryServiceStatus(schService, &status)) {
+            if (status.dwCurrentState == SERVICE_RUNNING) {
+                // Hizmet zaten çalışıyor
+                logfile = fopen("goodbyedpi_log.txt", "a");
+                if (logfile) {
+                    fprintf(logfile, "WinDivert service is already running\n");
+                    fclose(logfile);
+                }
+                success = TRUE;
+            }
+            else {
+                // Hizmet var ama çalışmıyor, başlat
+                if (StartService(schService, 0, NULL)) {
+                    logfile = fopen("goodbyedpi_log.txt", "a");
+                    if (logfile) {
+                        fprintf(logfile, "WinDivert service started\n");
+                        fclose(logfile);
+                    }
+                    success = TRUE;
+                }
+                else {
+                    dwResult = GetLastError();
+                    logfile = fopen("goodbyedpi_error.log", "a");
+                    if (logfile) {
+                        fprintf(logfile, "StartService failed: %lu\n", dwResult);
+                        fclose(logfile);
+                    }
+                }
+            }
+        }
+        CloseServiceHandle(schService);
+    }
+    else {
+        // Hizmet yok, yeni oluştur
+        schService = CreateService(
+            schSCManager,             // SCManager veri tabanı
+            "WinDivert",              // Hizmet adı
+            "WinDivert Packet Divert Driver", // Görünen ad
+            SERVICE_ALL_ACCESS,       // İstenen erişim
+            SERVICE_KERNEL_DRIVER,    // Hizmet türü
+            SERVICE_DEMAND_START,     // Başlatma türü
+            SERVICE_ERROR_NORMAL,     // Hata kontrolü türü
+            szDriverPath,             // Hizmet binary'sinin yolu
+            NULL,                     // Yük sırası grubu yok
+            NULL,                     // Yük sırası başlangıç değeri yok
+            NULL,                     // Bağımlılık yok
+            NULL,                     // LocalSystem hesabı
+            NULL                      // Şifre yok
+        );
+        
+        if (schService == NULL) {
+            dwResult = GetLastError();
+            logfile = fopen("goodbyedpi_error.log", "a");
+            if (logfile) {
+                fprintf(logfile, "CreateService failed: %lu\n", dwResult);
+                fprintf(logfile, "Driver path: %s\n", szDriverPath);
+                fclose(logfile);
+            }
+        }
+        else {
+            // Hizmeti başlat
+            if (StartService(schService, 0, NULL)) {
+                logfile = fopen("goodbyedpi_log.txt", "a");
+                if (logfile) {
+                    fprintf(logfile, "WinDivert service installed and started\n");
+                    fclose(logfile);
+                }
+                success = TRUE;
+            }
+            else {
+                dwResult = GetLastError();
+                logfile = fopen("goodbyedpi_error.log", "a");
+                if (logfile) {
+                    fprintf(logfile, "StartService failed: %lu\n", dwResult);
+                    fprintf(logfile, "Driver path: %s\n", szDriverPath);
+                    fclose(logfile);
+                }
+            }
+            CloseServiceHandle(schService);
+        }
+    }
+    
+    CloseServiceHandle(schSCManager);
+    return success;
+}
+
+// Function to build menu
+HMENU build_menu(void) {
+    // Try to create the menu without exception handling
+    HMENU menu = create_popup_menu();
+    return menu;
+}
+
+// Handle tray events 
+static void handle_tray_event(HWND hwnd, LPARAM lParam) {
+    if (lParam == WM_RBUTTONUP) {
+        POINT pt;
+        GetCursorPos(&pt);
+        SetForegroundWindow(hwnd);
+        if (hPopupMenu) DestroyMenu(hPopupMenu);
+        hPopupMenu = create_popup_menu();
+        TrackPopupMenu(hPopupMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, NULL);
+        PostMessage(hwnd, WM_NULL, 0, 0);
+    }
+}
+
+// Window procedure for handling messages
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CREATE:
+            g_hwnd = hwnd;
+            
+            // Log dosyalarını temizle - her derleme/çalıştırmada sıfırlar
+            FILE *clearLog = fopen("goodbyedpi_log.txt", "w");
+            if (clearLog) {
+                fprintf(clearLog, "=== Log başlatıldı - %s ===\n", __DATE__);
+                fclose(clearLog);
+            }
+            clearLog = fopen("goodbyedpi_error.log", "w");
+            if (clearLog) {
+                fprintf(clearLog, "=== Hata logu başlatıldı - %s ===\n", __DATE__);
+                fclose(clearLog);
+            }
+            
+            // Initialize scripts first
+            scripts_init();
+            
+            // Log başlat - debug amaçlı
+            FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+            if (logfile) {
+                fprintf(logfile, "[GUI] WM_CREATE: Initialized scripts, count=%d\n", scripts_count());
+                fclose(logfile);
+            }
+            
+            // Scriptleri al ve script sayısını güncelle
+            scripts = scripts_get_all();
+            scripts_size = scripts_count();
+            
+            // Debug log
+            logfile = fopen("goodbyedpi_log.txt", "a");
+            if (logfile) {
+                fprintf(logfile, "[GUI] WM_CREATE: Got scripts, scripts_size=%d\n", scripts_size);
+                fclose(logfile);
+            }
+            
+            // Load icons
+            hIconPaused = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON_PAUSED));
+            hIconRunning = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON_RUNNING));
+            
+            // Initialize tray icon
+            nid.cbSize = sizeof(NOTIFYICONDATA);
+            nid.hWnd = hwnd;
+            nid.uID = ID_TRAY;
+            nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+            nid.uCallbackMessage = WM_TRAY;
+            nid.hIcon = hIconPaused;
+            strcpy(nid.szTip, "GoodbyeDPI - Stopped");
+            
+            Shell_NotifyIcon(NIM_ADD, &nid);
+            tray_added = 1;
+            
+            // Önce kaydedilmiş script indeksini yükle
+            last_selected_idx = load_selected_script();
+            
+            // Debug log
+            logfile = fopen("goodbyedpi_log.txt", "a");
+            if (logfile) {
+                fprintf(logfile, "[GUI] WM_CREATE: Loaded selected script index=%d\n", last_selected_idx);
+                fclose(logfile);
+            }
+            
+            // Eğer kaydedilmiş script bulunamadıysa varsayılanı kullan
+            if (last_selected_idx < 0 || last_selected_idx >= scripts_size) {
+                last_selected_idx = get_default_script_index();
+                if (last_selected_idx >= 0) {
+                    save_selected_script(last_selected_idx);
+                    // Debug log
+                    logfile = fopen("goodbyedpi_log.txt", "a");
+                    if (logfile) {
+                        fprintf(logfile, "[GUI] WM_CREATE: Using default script index=%d\n", last_selected_idx);
+                        fclose(logfile);
+                    }
+                }
+            }
+            
+            // selected_script değişkenini güncelle
+            selected_script = last_selected_idx;
+            
+            // Debug log
+            logfile = fopen("goodbyedpi_log.txt", "a");
+            if (logfile) {
+                fprintf(logfile, "[GUI] WM_CREATE: Set selected_script=%d\n", selected_script);
+                fclose(logfile);
+            }
+            
+            // ÖNEMLİ: Otomatik başlatmayı tamamen devre dışı bırakma
+            // Eskisi: Start automatically if set to autostart
+            // if (get_autostart_enabled()) {
+            //     PostMessage(hwnd, WM_COMMAND, ID_TRAY_START, 0);
+            // }
+            
+            return 0;
+            
+        case WM_TRAY:
+            handle_tray_event(hwnd, lParam);
+            return 0;
+            
+        case WM_COMMAND:
+            {
+                // Check if command is from script selection
+                if (LOWORD(wParam) >= ID_TRAY_SCRIPT_FIRST && 
+                    LOWORD(wParam) < ID_TRAY_SCRIPT_FIRST + scripts_size) {
+                    
+                    int script_idx = LOWORD(wParam) - ID_TRAY_SCRIPT_FIRST;
+                    
+                    // Update check marks in menu
+                    if (last_selected_idx >= 0 && last_selected_idx < scripts_size) {
+                        CheckMenuItem(hPopupMenu, ID_TRAY_SCRIPT_FIRST + last_selected_idx, 
+                                    MF_BYCOMMAND | MF_UNCHECKED);
+                    }
+                    
+                    CheckMenuItem(hPopupMenu, LOWORD(wParam), MF_BYCOMMAND | MF_CHECKED);
+                    last_selected_idx = script_idx;
+                    selected_script = script_idx; // Set selected_script when selecting from menu
+                    save_selected_script(script_idx);
+                    
+                    // If already running, restart with new script
+                    if (is_running) {
+                        handle_stop();
+                        handle_start();
+                    }
+                } else {
+                    switch (LOWORD(wParam)) {
+                        case ID_TRAY_EXIT:
+                            DestroyWindow(hwnd);
+                            break;
+                            
+                        case ID_TRAY_START:
+                            handle_start();
+                            break;
+                            
+                        case ID_TRAY_STOP:
+                            handle_stop();
+                            break;
+                            
+                        case ID_TRAY_AUTOSTART:
+                            {
+                                BOOL current = get_autostart_enabled();
+                                set_autostart(!current);
+                                CheckMenuItem(hPopupMenu, ID_TRAY_AUTOSTART, 
+                                            MF_BYCOMMAND | (get_autostart_enabled() ? MF_CHECKED : MF_UNCHECKED));
+                            }
+                            break;
+                            
+                        case ID_TRAY_STATUS:
+                            show_status_dialog(hwnd);
+                            break;
+                            
+                        case ID_TRAY_ABOUT:
+                            show_about_dialog(hwnd);
+                            break;
+                    }
+                }
+                return 0;
+            }
+            break;
+        
+        case WM_APP_RESTART:
+            // Handle restart
+            if (is_running) {
+                handle_stop();
+                Sleep(1000); // Wait for process to terminate
+                handle_start();
+            }
+            return 0;
+            
+        case WM_DESTROY:
+            // Clean up tray icon
+            if (tray_added) {
+                Shell_NotifyIcon(NIM_DELETE, &nid);
+                tray_added = 0;
+            }
+            
+            // Clean up menus
+            if (hPopupMenu) {
+                DestroyMenu(hPopupMenu);
+                hPopupMenu = NULL;
+            }
+            
+            // Stop running process
+            if (is_running) {
+                handle_stop();
+            }
+            
+            // Clean up icons
+            if (hIconPaused) {
+                DestroyIcon(hIconPaused);
+                hIconPaused = NULL;
+            }
+            if (hIconRunning) {
+                DestroyIcon(hIconRunning);
+                hIconRunning = NULL;
+            }
+            
+            // Release mutex
+            if (hMutex) {
+                ReleaseMutex(hMutex);
+                CloseHandle(hMutex);
+                hMutex = NULL;
+            }
+            
+            PostQuitMessage(0);
+            return 0;
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+// Log dosyalarını temizleyen yeni fonksiyon
+static void clear_log_files(void) {
+    // Log dosyalarını temizle
+    FILE *clearLog = fopen("goodbyedpi_log.txt", "w");
+    if (clearLog) {
+        fprintf(clearLog, "=== Log başlatıldı - %s ===\n", __DATE__);
+        fclose(clearLog);
+    }
+    
+    clearLog = fopen("goodbyedpi_error.log", "w");
+    if (clearLog) {
+        fprintf(clearLog, "=== Hata logu başlatıldı - %s ===\n", __DATE__);
+        fclose(clearLog);
+    }
+}
+
+// Program entry point
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
+    // Log başlangıç bilgisi ekle, temizlemeden
+    FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "\n=== Program başlatıldı - %s ===\n", __DATE__);
+        fclose(logfile);
+    }
+    
+    // Check for previous instance
+    hMutex = CreateMutex(NULL, TRUE, "GoodbyeDPI_Mutex");
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        // Silently exit without showing warning message
+        return 1;
+    }
+    
+    // Register window class
+    WNDCLASSEX wc = {0};
+    wc.cbSize = sizeof(WNDCLASSEX);
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = hInstance;
+    wc.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON_MAIN));
+    wc.lpszClassName = "GoodbyeDPIClass";
+    
+    if (!RegisterClassEx(&wc)) {
+        MessageBox(NULL, "Window registration failed.", "GoodbyeDPI", MB_ICONERROR | MB_OK);
+        return 1;
+    }
+    
+    // Initialize common controls
+    INITCOMMONCONTROLSEX icc = {0};
+    icc.dwSize = sizeof(INITCOMMONCONTROLSEX);
+    icc.dwICC = ICC_STANDARD_CLASSES;
+    InitCommonControlsEx(&icc);
+    
+    // Create window (hidden)
+    HWND hwnd = CreateWindowEx(
+        0, "GoodbyeDPIClass", "GoodbyeDPI",
+        WS_OVERLAPPEDWINDOW, 
+        CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,
+        NULL, NULL, hInstance, NULL
+    );
+    
+    if (!hwnd) {
+        MessageBox(NULL, "Window creation failed.", "GoodbyeDPI", MB_ICONERROR | MB_OK);
+        return 1;
+    }
+    
+    // Initialize scripts first
+    scripts_init();
+    
+    // Try to load previously selected script index
+    last_selected_idx = load_selected_script();
+    
+    // Message loop
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0) > 0) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
+    
+    // Clean up scripts
+    scripts_free();
+    
+    return (int)msg.wParam;
 }
 
-static HMENU create_popup_menu() {
-    HMENU hMenu = CreatePopupMenu();
-    if (!hMenu) return NULL;
-    
-    // Durum menü öğesi
-    InsertMenu(hMenu, -1, MF_BYPOSITION | MF_STRING, IDM_STATUS, "Durum Bilgisi");
-    InsertMenu(hMenu, -1, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
-    
-    // Scriptler için alt menü
-    HMENU hScriptsMenu = CreatePopupMenu();
-    if (!hScriptsMenu) {
-        DestroyMenu(hMenu);
-        return NULL;
-    }
-    
-    // Scriptleri ekle
-    for (unsigned int i = 0; i < scripts_count(); i++) {
-        const char *name = script_get(i)->name;
-        char display_name[128];
-        sanitize_name(name, display_name, sizeof(display_name));
+// Implementation of auxiliary functions
+static void terminate_goodbyedpi() {
+    script_stop();
+}
+
+// Show status dialog
+static void show_status_dialog(HWND hwnd) {
+    char message[512];
+    if (is_running && selected_script >= 0 && selected_script < scripts_size) {
+        DWORD elapsed = GetTickCount() - start_time;
+        int hours = elapsed / (1000 * 60 * 60);
+        int minutes = (elapsed % (1000 * 60 * 60)) / (1000 * 60);
+        int seconds = (elapsed % (1000 * 60)) / 1000;
         
-        UINT flags = MF_BYPOSITION | MF_STRING;
-        if (i == last_selected_idx)
-            flags |= MF_CHECKED;
-            
-        InsertMenu(hScriptsMenu, -1, flags, i + IDM_BASE, display_name);
+        _snprintf(message, sizeof(message), 
+                 "GoodbyeDPI Status\n\n"
+                 "Status: Running\n"
+                 "Configuration: %s\n"
+                 "Running time: %02d:%02d:%02d",
+                 scripts[selected_script].name, hours, minutes, seconds);
+    } else {
+        _snprintf(message, sizeof(message), 
+                 "GoodbyeDPI Status\n\n"
+                 "Status: Stopped");
     }
     
-    InsertMenu(hMenu, -1, MF_BYPOSITION | MF_POPUP | MF_STRING, (UINT_PTR)hScriptsMenu, "Mod Seç");
+    MessageBox(hwnd, message, "GoodbyeDPI Status", MB_ICONINFORMATION | MB_OK);
+}
+
+// Show about dialog
+static void show_about_dialog(HWND hwnd) {
+    MessageBox(hwnd, 
+               "GoodbyeDPI GUI\n"
+               "Version 2.1\n\n"
+               "GitHub/TunahanDilercan\n\n"
+               "GitHub/ValdikSS/GoodbyeDPI\n\n"
+               "DPI circumvention utility",
+               "About GoodbyeDPI", MB_ICONINFORMATION | MB_OK);
+}
+
+// Implementation of prompt_iteration_continue function
+BOOL prompt_iteration_continue(HWND hwnd) {
+    // Safety check for hwnd
+    if (!hwnd || !IsWindow(hwnd)) {
+        // Use main window handle if available, or NULL as fallback
+        hwnd = g_hwnd ? g_hwnd : NULL;
+    }
     
-    // Çalıştır/Durdur
-    if (is_running) {
-        InsertMenu(hMenu, -1, MF_BYPOSITION | MF_STRING, IDM_STOP, "Durdur");
+    int result = MessageBox(hwnd, 
+                  "The current operation has completed one iteration.\n\nContinue to iterate?",
+                  "GoodbyeDPI", 
+                  MB_YESNO | MB_ICONQUESTION);
+    
+    // Return TRUE if Yes was clicked
+    return (result == IDYES);
+}
+
+// Show balloon notification
+static void show_balloon_notification(const char* title, const char* message, DWORD info_flags) {
+    nid.uFlags |= NIF_INFO;
+    _snprintf(nid.szInfoTitle, sizeof(nid.szInfoTitle), "%s", title);
+    _snprintf(nid.szInfo, sizeof(nid.szInfo), "%s", message);
+    nid.dwInfoFlags = info_flags;
+    nid.uTimeout = 10000;
+    
+    Shell_NotifyIcon(NIM_MODIFY, &nid);
+}
+
+// Function to check if application is set to run at startup
+static BOOL get_autostart_enabled(void) {
+    HKEY hKey;
+    LONG result;
+    char exePath[MAX_PATH] = {0};
+    DWORD type, size = sizeof(exePath);
+    BOOL enabled = FALSE;
+    
+    // Check if registry key exists
+    result = RegOpenKeyEx(HKEY_CURRENT_USER, 
+                           "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 
+                           0, KEY_READ, &hKey);
+    
+    if (result == ERROR_SUCCESS) {
+        // Try to get the value
+        result = RegQueryValueEx(hKey, "GoodbyeDPI", NULL, &type, 
+                                (BYTE*)exePath, &size);
+        
+        // If value exists and is a string, app is set to autostart
+        if (result == ERROR_SUCCESS && type == REG_SZ) {
+            enabled = TRUE;
+        }
+        
+        RegCloseKey(hKey);
+    }
+    
+    return enabled;
+}
+
+// Function to set or remove autostart setting
+static BOOL set_autostart(BOOL enable) {
+    HKEY hKey;
+    LONG result;
+    char exePath[MAX_PATH] = {0};
+    
+    // Open the registry key
+    result = RegOpenKeyEx(HKEY_CURRENT_USER, 
+                           "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 
+                           0, KEY_WRITE, &hKey);
+    
+    if (result != ERROR_SUCCESS) {
+        return FALSE;
+    }
+    
+    if (enable) {
+        // Get path of current executable
+        GetModuleFileName(NULL, exePath, MAX_PATH);
+        
+        // Add application to autostart by creating registry value
+        result = RegSetValueEx(hKey, "GoodbyeDPI", 0, REG_SZ, 
+                              (BYTE*)exePath, strlen(exePath) + 1);
     }
     else {
-        InsertMenu(hMenu, -1, MF_BYPOSITION | MF_STRING, IDM_START, "Başlat");
+        // Remove application from autostart by deleting registry value
+        result = RegDeleteValue(hKey, "GoodbyeDPI");
     }
     
-    // Ayarlar alt menüsü
-    HMENU hSettingsMenu = CreatePopupMenu();
-    if (hSettingsMenu) {
-        InsertMenu(hSettingsMenu, -1, MF_BYPOSITION | MF_STRING | 
-                   (get_autostart_enabled() ? MF_CHECKED : MF_UNCHECKED), 
-                   IDM_AUTOSTART, "Windows ile Otomatik Başlat");
-        InsertMenu(hSettingsMenu, -1, MF_BYPOSITION | MF_STRING, 
-                   IDM_MINIMIZE, "Başlangıçta Simge Durumuna Küçült");
-                   
-        InsertMenu(hMenu, -1, MF_BYPOSITION | MF_POPUP | MF_STRING, 
-                   (UINT_PTR)hSettingsMenu, "Ayarlar");
-    }
-    
-    InsertMenu(hMenu, -1, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
-    
-    // Hakkında ve Çıkış
-    InsertMenu(hMenu, -1, MF_BYPOSITION | MF_STRING, IDM_ABOUT, "Hakkında");
-    InsertMenu(hMenu, -1, MF_BYPOSITION | MF_STRING, IDM_EXIT, "Çıkış");
-    
-    return hMenu;
-}
-
-static void build_menu(void)
-{
-    __try {
-        // Önceki menüyü temizle
-        if (hMenu) {
-            DestroyMenu(hMenu);
-        }
-        
-        hMenu = create_popup_menu();
-        if (!hMenu) {
-            log_error("Failed to create popup menu");
-            return;
-        }
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER) {
-        log_error("Exception in build_menu function");
-        hMenu = NULL;
-    }
-}
-
-// Tray simge olaylarını işleme
-static void handle_tray_event(HWND hwnd, LPARAM lParam) {
-    __try {
-        switch(lParam) {
-            case WM_LBUTTONDOWN:
-                // Sol tıklamada program durumunu değiştir
-                if (is_running) {
-                    script_stop();
-                    is_running = 0;
-                }
-                else if (last_selected_idx >= 0) {
-                    script_start(last_selected_idx);
-                    is_running = 1;
-                }
-                tray_update(is_running);
-                break;
-            case WM_RBUTTONDOWN:
-            case WM_RBUTTONUP:
-            case WM_CONTEXTMENU:
-                {
-                    POINT pt;
-                    
-                    // Menüyü yeniden oluştur (her zaman güncel olması için)
-                    build_menu();
-                    
-                    // İmleç konumunu al
-                    if (!GetCursorPos(&pt)) {
-                        log_error("GetCursorPos failed");
-                        pt.x = 0;
-                        pt.y = 0;
-                    }
-                    
-                    // Menü gösterilmeden önce pencereyi aktif hale getir
-                    // Bu, menünün düzgün kapanmasını garantiler
-                    SetForegroundWindow(hwnd);
-                    
-                    if (hMenu) {
-                        // Menüyü göster ve işlem yap
-                        UINT flags = TPM_RIGHTBUTTON | TPM_RETURNCMD;
-                        int cmd = TrackPopupMenu(hMenu, flags, pt.x, pt.y, 0, hwnd, NULL);
-                        
-                        // Komut işleme
-                        if (cmd) {
-                            PostMessage(hwnd, WM_COMMAND, cmd, 0);
-                        }
-                    }
-                    else {
-                        log_error("Menu handle is NULL during right click");
-                    }
-                    
-                    // Hayalet tık sorunu için
-                    PostMessage(hwnd, WM_NULL, 0, 0);
-                }
-                break;
-        }
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER) {
-        log_error("Exception in handle_tray_event function");
-        // Çökme sonrası kurtarma girişimi
-        if (hMenu) {
-            DestroyMenu(hMenu);
-            hMenu = NULL;
-            build_menu(); // Menüyü yeniden oluştur
-        }
-    }
-}
-
-static LRESULT CALLBACK WndProc(HWND h,UINT m,WPARAM w,LPARAM l)
-{
-    // Hata yakalama için try-except bloğu ekleyelim
-    __try {
-        switch(m)
-        {
-        case WM_TRAY:
-            handle_tray_event(h, l);
-            break;
-        case WM_COMMAND:
-            switch (LOWORD(w)) {
-                case IDM_EXIT: 
-                    // Programı tamamen kapat ve tüm kalıntıları temizle
-                    script_stop(); 
-                    tray_update(0); 
-                    
-                    // Windows otomatik başlatma ayarını kaldır
-                    remove_autostart();
-                    
-                    // Service_remove.cmd scriptini yönetici olarak çalıştır
-                    run_service_remove_script();
-                    
-                    // "last_selected.dat" dosyasını sil
-                    remove("last_selected.dat");
-                    
-                    // Uygulamayı kapat
-                    DestroyWindow(h); 
-                    break;
-                case IDM_STOP: 
-                    script_stop(); 
-                    tray_update(0); 
-                    break;
-                case IDM_START:
-                    {
-                        // Önceki bir işlem zaten çalışıyorsa
-                        if (is_running) {
-                            int result = show_continue_dialog(h);
-                            
-                            if (result == IDYES) {
-                                restart_with_script(last_selected_idx);
-                                tray_update(1); // UI durumunu güncelle
-                            }
-                            // IDNO durumunda hiçbir şey yapma
-                            break;
-                        }
-                        
-                        // Önceden seçilmiş bir script varsa
-                        if (last_selected_idx >= 0) {
-                            script_start(last_selected_idx);
-                            is_running = 1;
-                            tray_update(1);
-                        } 
-                        else {
-                            MessageBox(h, "Lütfen önce bir DPI atlatma yöntemi seçin.", 
-                                      "GoodbyeDPI", MB_OK | MB_ICONINFORMATION);
-                        }
-                    }
-                    break;
-                case IDM_STATUS:
-                    show_status_window(h); // Durum penceresini göster
-                    break;
-                default:
-                    if (LOWORD(w) >= IDM_BASE) {
-                        int idx = LOWORD(w) - IDM_BASE;
-                        
-                        // Eğer halihazırda DPI atlatma çalışıyorsa kullanıcıya sor
-                        if (is_running) {
-                            int result = show_continue_dialog(h);
-                                
-                            if (result == IDYES) {
-                                restart_with_script(idx);
-                                
-                                // Seçilen son indeksi güncelle
-                                last_selected_idx = idx;
-                                
-                                // Her menü öğesini işaretle/işareti kaldır
-                                build_menu();
-                                tray_update(1);
-                            }
-                            break;
-                        }
-                        
-                        // Değilse, seçilen scriptleri başlat
-                        script_start(idx);
-                        is_running = 1;
-                        
-                        // Seçilen son indeksi güncelle
-                        last_selected_idx = idx;
-                        
-                        // Her menü öğesini işaretle/işareti kaldır
-                        build_menu();
-                        
-                        // Simge durumunu güncelle
-                        tray_update(1);
-                    }
-                    break;
-            }
-            break;
-            
-        // Özel yeniden başlatma mesajı
-        case WM_APP_RESTART:
-            if (is_running) {
-                script_stop();
-            }
-            if (last_selected_idx >= 0) {
-                script_run(last_selected_idx);
-                tray_update(1);
-            } else {
-                tray_update(0);
-            }
-            break;
-            
-        // Watchdog zamanlayıcısı - uygulama çalışmasını düzenli kontrol et
-        case WM_TIMER:
-            if (w == IDT_WATCHDOG) {
-                // Sistem tepsi ikonunun hala aktif olup olmadığını kontrol et
-                // Shell_NotifyIcon başarısız olursa ikon kaybolmuş demektir
-                if (!Shell_NotifyIcon(NIM_MODIFY, &nid)) {
-                    // Sistem tepsisinden ikon kaybolmuş, tekrar ekle
-                    tray_add(h);
-                    
-                    // DPI çalışır durumdaysa ikon rengini güncelle
-                    if (is_running) {
-                        tray_update(1);
-                    }
-                }
-            }
-            break;
-            
-        case WM_DESTROY:
-            tray_delete();
-            if (hMutex) CloseHandle(hMutex); // Mutex'i temizle
-            PostQuitMessage(0); 
-            break;
-            
-        default: 
-            return DefWindowProc(h,m,w,l);
-        }
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER) {
-        log_error("Exception in WndProc function");
-        // Daha sağlam hata kurtarma - menüyü yeniden oluştur ve tray simgesini kontrol et
-        if (hMenu) {
-            DestroyMenu(hMenu);
-            hMenu = NULL;
-            build_menu();
-        }
-        
-        // Tray simgesini yeniden ekle (kaybolmuşsa)
-        if (!tray_added) {
-            tray_add(h);
-            tray_update(is_running);
-        }
-    }
-    
-    return DefWindowProc(h, m, w, l);
-}
-
-// Function to save last selected script index when exiting
-static void save_last_selected(void) {
-    if (last_selected_idx >= 0) {
-        FILE *f = fopen("last_selected.dat", "wb");
-        if (f) {
-            fwrite(&last_selected_idx, sizeof(last_selected_idx), 1, f);
-            fclose(f);
-        }
-    }
-}
-
-int WINAPI WinMain(HINSTANCE hI,HINSTANCE,LPSTR lpCmdLine,INT)
-{
-    // Birden fazla kopya çalışmasını engelle
-    hMutex = CreateMutex(NULL, TRUE, "GoodbyeDPI_Singleton_Mutex");
-    if (hMutex && GetLastError() == ERROR_ALREADY_EXISTS) {
-        // Uygulama zaten çalışıyor, çık
-        CloseHandle(hMutex);
-        return 0;
-    }
-    
-    // Global exception handler kur
-    setup_exception_handler();
-    
-    // Windows XP ve sonrası için tema desteğini etkinleştir
-    InitCommonControls();
-    
-    // Kurtarma modu kontrolü
-    if (lpCmdLine && strstr(lpCmdLine, "-recovery")) {
-        error_recovery = 1;
-        // Uygulama çöktükten sonra yeniden başlarken biraz bekle
-        Sleep(2000);
-    }
-    
-    // COM kütüphanesini başlat (kısayol oluşturmak için gerekli)
-    CoInitialize(NULL);
-    
-    // Common Controls'ü başlat (Modern UI görünümü için)
-    INITCOMMONCONTROLSEX icc = { sizeof(INITCOMMONCONTROLSEX) };
-    icc.dwICC = ICC_WIN95_CLASSES;
-    InitCommonControlsEx(&icc);
-    
-    scripts_init();
-
-    // Program açılışta otomatik başlama ayarını etkinleştir
-    set_autostart();
-    
-    // Last selected index'i son seçimi hatırlamak için dosyadan oku
-    // (Uygulama kapanıp açıldığında seçim hatırlanacak)
-    FILE *f = fopen("last_selected.dat", "rb");
-    if (f) {
-        fread(&last_selected_idx, sizeof(last_selected_idx), 1, f);
-        fclose(f);
-        // Geçersiz index kontrolü
-        if (last_selected_idx < 0 || last_selected_idx >= scripts_count())
-            last_selected_idx = -1;
-    }
-    
-    // Eğer hiç seçim yapılmamışsa ya da geçersiz bir seçim varsa varsayılan script'i seç
-    if (last_selected_idx < 0) {
-        last_selected_idx = find_default_script();
-    }
-
-    WNDCLASS wc={0}; 
-    wc.lpfnWndProc=WndProc; 
-    wc.hInstance=hI;
-    wc.lpszClassName="GoodbyeDPI_GUI";
-    wc.hIcon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_ICON_MAIN)); // Ana ikon ata
-    RegisterClass(&wc);
-    HWND hWnd=CreateWindow("GoodbyeDPI_GUI","",WS_OVERLAPPEDWINDOW,
-                           0,0,0,0,NULL,NULL,hI,NULL);
-
-    tray_add(hWnd);
-    build_menu();
-
-    // Uygulama kapandığında son seçimi kaydet
-    atexit(save_last_selected);
-    
-    // Watchdog zamanlayıcısı kur - 10 saniyede bir servis durumunu kontrol et
-    SetTimer(hWnd, IDT_WATCHDOG, WATCHDOG_INTERVAL, NULL);
-
-    MSG msg; 
-    while(GetMessage(&msg,NULL,0,0)) { 
-        TranslateMessage(&msg); 
-        DispatchMessage(&msg); 
-    }
-    
-    // COM kütüphanesini kapat
-    CoUninitialize();
-    
-    return 0;
+    RegCloseKey(hKey);
+    return (result == ERROR_SUCCESS);
 }

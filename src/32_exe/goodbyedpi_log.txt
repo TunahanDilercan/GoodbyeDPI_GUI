@@ -23,7 +23,7 @@
 [scripts] Duplicate script detected: [TR] Alternative 5 (skipping)
 [scripts] Duplicate script detected: [TR] Alternative 6 (skipping)
 [scripts] Duplicate script detected: [TR] TTL 3 Only (skipping)
-[2025-05-01 21:48:32] Re-initializing scripts before creating menu
+[2025-05-01 23:28:40] Re-initializing scripts before creating menu
 [scripts] Added script #0: Russia Blacklist DNS Redirect
 [scripts] Added script #1: Any Country DNS Redirect
 [scripts] Added script #2: Any Country Standard
@@ -34,60 +34,26 @@
 [scripts] Added script #7: [TR] Alternative 5
 [scripts] Added script #8: [TR] Alternative 6
 [scripts] Added script #9: [TR] TTL 3 Only
-[2025-05-01 21:48:32] Menu creation - scripts count: 10
-[2025-05-01 21:48:32] Creating menu with 10 scripts
-[2025-05-01 21:48:32] Processing script 0: Russia Blacklist DNS Redirect
-[2025-05-01 21:48:32] Added to Other menu: Russia Blacklist DNS Redirect (ID=2000)
-[2025-05-01 21:48:32] Processing script 1: Any Country DNS Redirect
-[2025-05-01 21:48:32] Added to Other menu: Any Country DNS Redirect (ID=2001)
-[2025-05-01 21:48:32] Processing script 2: Any Country Standard
-[2025-05-01 21:48:32] Added to Other menu: Any Country Standard (ID=2002)
-[2025-05-01 21:48:32] Processing script 3: [TR] DNS Redirect
-[2025-05-01 21:48:32] Added to Other menu: [TR] DNS Redirect (ID=2003)
-[2025-05-01 21:48:32] Processing script 4: [TR] Alternative 2
-[2025-05-01 21:48:32] Added to Other menu: [TR] Alternative 2 (ID=2004)
-[2025-05-01 21:48:32] Processing script 5: [TR] Alternative 3
-[2025-05-01 21:48:32] Added to Other menu: [TR] Alternative 3 (ID=2005)
-[2025-05-01 21:48:32] Processing script 6: [TR] Alternative 4
-[2025-05-01 21:48:32] Added to Other menu: [TR] Alternative 4 (ID=2006)
-[2025-05-01 21:48:32] Processing script 7: [TR] Alternative 5
-[2025-05-01 21:48:32] Added to Other menu: [TR] Alternative 5 (ID=2007)
-[2025-05-01 21:48:32] Processing script 8: [TR] Alternative 6
-[2025-05-01 21:48:32] Added to Other menu: [TR] Alternative 6 (ID=2008)
-[2025-05-01 21:48:32] Processing script 9: [TR] TTL 3 Only
-[2025-05-01 21:48:32] Added to Other menu: [TR] TTL 3 Only (ID=2009)
-[2025-05-01 21:48:32] Menu creation complete - Turkey items: 0, Other items: 10
-[2025-05-01 21:49:26] Re-initializing scripts before creating menu
-[scripts] Added script #0: Russia Blacklist DNS Redirect
-[scripts] Added script #1: Any Country DNS Redirect
-[scripts] Added script #2: Any Country Standard
-[scripts] Added script #3: [TR] DNS Redirect
-[scripts] Added script #4: [TR] Alternative 2
-[scripts] Added script #5: [TR] Alternative 3
-[scripts] Added script #6: [TR] Alternative 4
-[scripts] Added script #7: [TR] Alternative 5
-[scripts] Added script #8: [TR] Alternative 6
-[scripts] Added script #9: [TR] TTL 3 Only
-[2025-05-01 21:49:26] Menu creation - scripts count: 10
-[2025-05-01 21:49:26] Creating menu with 10 scripts
-[2025-05-01 21:49:26] Processing script 0: Russia Blacklist DNS Redirect
-[2025-05-01 21:49:26] Added to Other menu: Russia Blacklist DNS Redirect (ID=2000)
-[2025-05-01 21:49:26] Processing script 1: Any Country DNS Redirect
-[2025-05-01 21:49:26] Added to Other menu: Any Country DNS Redirect (ID=2001)
-[2025-05-01 21:49:26] Processing script 2: Any Country Standard
-[2025-05-01 21:49:26] Added to Other menu: Any Country Standard (ID=2002)
-[2025-05-01 21:49:26] Processing script 3: [TR] DNS Redirect
-[2025-05-01 21:49:26] Added to Other menu: [TR] DNS Redirect (ID=2003)
-[2025-05-01 21:49:26] Processing script 4: [TR] Alternative 2
-[2025-05-01 21:49:26] Added to Other menu: [TR] Alternative 2 (ID=2004)
-[2025-05-01 21:49:26] Processing script 5: [TR] Alternative 3
-[2025-05-01 21:49:26] Added to Other menu: [TR] Alternative 3 (ID=2005)
-[2025-05-01 21:49:26] Processing script 6: [TR] Alternative 4
-[2025-05-01 21:49:26] Added to Other menu: [TR] Alternative 4 (ID=2006)
-[2025-05-01 21:49:26] Processing script 7: [TR] Alternative 5
-[2025-05-01 21:49:26] Added to Other menu: [TR] Alternative 5 (ID=2007)
-[2025-05-01 21:49:26] Processing script 8: [TR] Alternative 6
-[2025-05-01 21:49:26] Added to Other menu: [TR] Alternative 6 (ID=2008)
-[2025-05-01 21:49:26] Processing script 9: [TR] TTL 3 Only
-[2025-05-01 21:49:26] Added to Other menu: [TR] TTL 3 Only (ID=2009)
-[2025-05-01 21:49:26] Menu creation complete - Turkey items: 0, Other items: 10
+[2025-05-01 23:28:40] Menu creation - scripts count: 10
+[2025-05-01 23:28:40] Creating menu with 10 scripts
+[2025-05-01 23:28:40] Processing script 0: Russia Blacklist DNS Redirect
+[2025-05-01 23:28:40] Added to Other menu: Russia Blacklist DNS Redirect (ID=2000)
+[2025-05-01 23:28:40] Processing script 1: Any Country DNS Redirect
+[2025-05-01 23:28:40] Added to Other menu: Any Country DNS Redirect (ID=2001)
+[2025-05-01 23:28:40] Processing script 2: Any Country Standard
+[2025-05-01 23:28:40] Added to Other menu: Any Country Standard (ID=2002)
+[2025-05-01 23:28:40] Processing script 3: [TR] DNS Redirect
+[2025-05-01 23:28:40] Added to Other menu: [TR] DNS Redirect (ID=2003)
+[2025-05-01 23:28:40] Processing script 4: [TR] Alternative 2
+[2025-05-01 23:28:40] Added to Other menu: [TR] Alternative 2 (ID=2004)
+[2025-05-01 23:28:40] Processing script 5: [TR] Alternative 3
+[2025-05-01 23:28:40] Added to Other menu: [TR] Alternative 3 (ID=2005)
+[2025-05-01 23:28:40] Processing script 6: [TR] Alternative 4
+[2025-05-01 23:28:40] Added to Other menu: [TR] Alternative 4 (ID=2006)
+[2025-05-01 23:28:40] Processing script 7: [TR] Alternative 5
+[2025-05-01 23:28:40] Added to Other menu: [TR] Alternative 5 (ID=2007)
+[2025-05-01 23:28:40] Processing script 8: [TR] Alternative 6
+[2025-05-01 23:28:40] Added to Other menu: [TR] Alternative 6 (ID=2008)
+[2025-05-01 23:28:40] Processing script 9: [TR] TTL 3 Only
+[2025-05-01 23:28:40] Added to Other menu: [TR] TTL 3 Only (ID=2009)
+[2025-05-01 23:28:40] Menu creation complete - Turkey items: 0, Other items: 10

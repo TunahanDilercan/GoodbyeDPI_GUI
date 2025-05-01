@@ -27,31 +27,28 @@ jobs:
           unzip
           make
     
-    - name: Prepare WinDivert
+    - name: Check workspace structure
       shell: msys2 {0}
       run: |
-        echo "Downloading WinDivert..."
-        mkdir -p WinDivert-2.2.0-D
-        curl -L -o windivert.zip https://github.com/basil00/Divert/releases/download/v2.2.0/WinDivert-2.2.0-D.zip
+        echo "Checking workspace structure..."
         ls -la
-        echo "Extracting WinDivert..."
-        unzip -o windivert.zip -d WinDivert-2.2.0-D
-        echo "WinDivert contents:"
-        ls -la WinDivert-2.2.0-D
+        ls -la binary/x86/
+        ls -la binary/amd64/
+        ls -la include/
     
     - name: Build 32-bit version
       shell: msys2 {0}
       run: |
         cd src
         make clean
-        make CPREFIX=i686-w64-mingw32- WINDIVERTHEADERS=../WinDivert-2.2.0-D/include WINDIVERTLIBS=../WinDivert-2.2.0-D/x86 -j4
+        make CPREFIX=i686-w64-mingw32- WINDIVERTHEADERS=../include WINDIVERTLIBS=../binary/x86 -j4
     
     - name: Build 64-bit version
       shell: msys2 {0}
       run: |
         cd src
         make clean
-        make CPREFIX=x86_64-w64-mingw32- BIT64=1 WINDIVERTHEADERS=../WinDivert-2.2.0-D/include WINDIVERTLIBS=../WinDivert-2.2.0-D/x64 -j4
+        make CPREFIX=x86_64-w64-mingw32- BIT64=1 WINDIVERTHEADERS=../include WINDIVERTLIBS=../binary/amd64 -j4
     
     - name: Upload 32-bit artifact
       uses: actions/upload-artifact@v4

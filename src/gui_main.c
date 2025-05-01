@@ -6,6 +6,7 @@
 #include <shellapi.h>
 #include <commctrl.h>
 #include <time.h>
+#include <tlhelp32.h> // For CreateToolhelp32Snapshot and process functions
 
 #include "goodbyedpi.h"
 #include "scripts.h"
@@ -111,6 +112,7 @@ static void restart_as_admin(void);  // restart_as_admin() prototipi eklendi
 static BOOL install_windivert_driver(void); // install_windivert_driver() prototipi eklendi
 static void log_info(const char* format, ...);  // log_info() prototype added
 static void log_error(const char* format, ...);  // log_error() prototype added
+static BOOL is_goodbyedpi_running(void); // is_goodbyedpi_running() prototype added
 
 // Helper function to identify Turkey options
 int is_turkey_option(const char *name) {
@@ -1074,9 +1076,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         log_info("Script changed while running. Stopping current script and will restart with new script");
                         handle_stop();
                         
-                        // Set the script_switch_pending flag and start timer for auto-restart
+                        // Ensure the process has completely stopped before restarting
+                        // Increase the delay to allow clean shutdown
+                        Sleep(500); // Add immediate delay for process termination
+                        
+                        // Check if process is still running after immediate delay
+                        if (is_goodbyedpi_running()) {
+                            log_info("Process still running after stop attempt, forcing termination");
+                            terminate_goodbyedpi();
+                            Sleep(500); // Additional delay after forced termination
+                        }
+                        
+                        // Set the script_switch_pending flag and start timer for auto-restart with longer delay
                         script_switch_pending = TRUE;
-                        SetTimer(hwnd, IDT_AUTO_START, AUTO_SCRIPT_SWITCH_DELAY, NULL);
+                        SetTimer(hwnd, IDT_AUTO_START, AUTO_SCRIPT_SWITCH_DELAY + 500, NULL);
                     } 
                     else {
                         // Not running - start automatically when user selects a script
@@ -1277,7 +1290,41 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 // Implementation of auxiliary functions
 static void terminate_goodbyedpi() {
+    // First try to stop via script_stop
+    log_info("Terminating GoodbyeDPI process");
     script_stop();
+    
+    // If that doesn't work, force kill the process
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32 pe32 = {0};
+        pe32.dwSize = sizeof(PROCESSENTRY32);
+        
+        if (Process32First(hSnapshot, &pe32)) {
+            do {
+                // Look for goodbyedpi.exe processes
+                if (strcmpi(pe32.szExeFile, "goodbyedpi.exe") == 0) {
+                    log_info("Found goodbyedpi.exe process with PID %lu, terminating", pe32.th32ProcessID);
+                    
+                    // Open the process and terminate it
+                    HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
+                    if (hProcess) {
+                        if (TerminateProcess(hProcess, 1)) {
+                            log_info("Process terminated successfully");
+                        } else {
+                            log_error("Failed to terminate process, error: %lu", GetLastError());
+                        }
+                        CloseHandle(hProcess);
+                    } else {
+                        log_error("Failed to open process for termination, error: %lu", GetLastError());
+                    }
+                }
+            } while (Process32Next(hSnapshot, &pe32));
+        }
+        CloseHandle(hSnapshot);
+    } else {
+        log_error("Failed to create process snapshot for termination");
+    }
 }
 
 // Show status dialog
@@ -1413,4 +1460,36 @@ static BOOL set_autostart(BOOL enable) {
     
     RegCloseKey(hKey);
     return (result == ERROR_SUCCESS);
+}
+
+// Function to check if GoodbyeDPI process is still running
+static BOOL is_goodbyedpi_running(void) {
+    HANDLE hSnapshot;
+    PROCESSENTRY32 pe32;
+    BOOL found = FALSE;
+    
+    // Take a snapshot of all processes
+    hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE) {
+        log_error("Failed to create process snapshot");
+        return FALSE;
+    }
+    
+    // Set the size of the structure before using it
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+    
+    // Get the first process
+    if (Process32First(hSnapshot, &pe32)) {
+        do {
+            // Check if this is the GoodbyeDPI process - could be named differently based on compilation
+            // This checks for both the main executable and any child processes
+            if (strcmpi(pe32.szExeFile, "goodbyedpi.exe") == 0) {
+                found = TRUE;
+                break;
+            }
+        } while (Process32Next(hSnapshot, &pe32));
+    }
+    
+    CloseHandle(hSnapshot);
+    return found;
 }

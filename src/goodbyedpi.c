@@ -383,18 +383,61 @@ int start_goodbyedpi(int argc, char **argv)
 
 void stop_goodbyedpi(void)
 {
-    if (!goodbyedpi_running || !goodbyedpi_thread) return;
-    // Signal the thread to exit
+    FILE *logfile;
+
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "[%s] stop_goodbyedpi called, is_running=%d, thread=%p\n", 
+                __FUNCTION__, goodbyedpi_running, goodbyedpi_thread);
+        fclose(logfile);
+    }
+
+    if (!goodbyedpi_running || !goodbyedpi_thread) {
+        logfile = fopen("goodbyedpi_log.txt", "a");
+        if (logfile) {
+            fprintf(logfile, "[%s] Not running or no thread, returning\n", __FUNCTION__);
+            fclose(logfile);
+        }
+        return;
+    }
+
+    // First signal the thread to exit
     exiting = 1;
-    // Shutdown WinDivert handles to unblock WinDivertRecv
-    deinit_all(); // Call deinit_all here to potentially unblock the recv call
-    // Wait for the thread to finish gracefully
-    WaitForSingleObject(goodbyedpi_thread, INFINITE);
+    
+    // First, call deinit_all() to close all WinDivert handles
+    // This should unblock any WinDivertRecv call
+    deinit_all();
+    
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "[%s] Called deinit_all(), waiting for thread to exit\n", __FUNCTION__);
+        fclose(logfile);
+    }
+    
+    // Wait for thread with shorter timeout (1 second)
+    if (WaitForSingleObject(goodbyedpi_thread, 1000) == WAIT_TIMEOUT) {
+        // If thread doesn't exit within timeout, terminate it forcefully
+        logfile = fopen("goodbyedpi_log.txt", "a");
+        if (logfile) {
+            fprintf(logfile, "[%s] Thread did not exit within timeout, terminating forcefully\n", __FUNCTION__);
+            fclose(logfile);
+        }
+        
+        TerminateThread(goodbyedpi_thread, 0);
+    }
+    
     CloseHandle(goodbyedpi_thread);
     goodbyedpi_thread = NULL;
     goodbyedpi_running = 0;
+    
     // Reset exiting flag after stopping
     exiting = 0;
+    
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "[%s] stop_goodbyedpi completed successfully\n", __FUNCTION__);
+        fclose(logfile);
+    }
 }
 
 int is_goodbyedpi_running(void) { return goodbyedpi_running; }

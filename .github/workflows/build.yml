@@ -12,7 +12,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: 'recursive'
     
@@ -51,13 +51,13 @@ jobs:
         make CPREFIX=x86_64-w64-mingw32- BIT64=1 WINDIVERTHEADERS=../WinDivert-2.2.0-D/include WINDIVERTLIBS=../WinDivert-2.2.0-D/x64 -j4
     
     - name: Upload 32-bit artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: GoodbyeDPI-x86
         path: src/32_exe/
     
     - name: Upload 64-bit artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: GoodbyeDPI-x64
         path: src/64_exe/

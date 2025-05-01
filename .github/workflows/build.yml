@@ -2,80 +2,62 @@ name: Build GoodbyeDPI
 
 on:
   push:
-    paths:
-      - 'src/**'
+    branches: [ main, master ]
   pull_request:
-    paths:
-      - 'src/**'
+    branches: [ main, master ]
   workflow_dispatch:
-
-env:
-  WINDIVERT_URL: https://reqrypt.org/download/WinDivert-2.2.0-D.zip
-  WINDIVERT_NAME: WinDivert-2.2.0-D.zip
-  WINDIVERT_BASENAME: WinDivert-2.2.0-D
-  WINDIVERT_SHA256: 1d461cfdfa7ba88ebcfbb3603b71b703e9f72aba8aeff99a75ce293e6f89d2ba
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Declare short commit variable
-        id: vars
-        run: |
-          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Install MinGW-w64
-        run: >
-          sudo rm /var/lib/man-db/auto-update &&
-          sudo DEBIAN_FRONTEND=noninteractive XZ_DEFAULTS="-T0" XZ_OPT="-T0" eatmydata
-          apt install -y --no-install-recommends gcc-mingw-w64
-
-      - name: Download WinDivert from cache
-        id: windivert-cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env. WINDIVERT_NAME }}
-          key: ${{ env. WINDIVERT_SHA256 }}
-
-      - name: Download WinDivert from the website
-        if: steps.windivert-cache.outputs.cache-hit != 'true'
-        run: >
-          wget ${{ env. WINDIVERT_URL }} &&
-          (echo ${{ env. WINDIVERT_SHA256 }} ${{ env. WINDIVERT_NAME }} | sha256sum -c)
-
-      - name: Unpack WinDivert
-        run: unzip ${{ env. WINDIVERT_NAME }}
-
-      - name: Compile x86_64
-        run: >
-          cd src && make clean &&
-          make CPREFIX=x86_64-w64-mingw32- BIT64=1 WINDIVERTHEADERS=../${{ env.WINDIVERT_BASENAME }}/include WINDIVERTLIBS=../${{ env.WINDIVERT_BASENAME }}/x64 -j4
-
-      - name: Prepare x86_64 directory
-        run: |
-          mkdir goodbyedpi_x86_64_${{ steps.vars.outputs.sha_short }}
-          cp src/goodbyedpi.exe ${{ env.WINDIVERT_BASENAME }}/x64/*.{dll,sys} goodbyedpi_x86_64_${{ steps.vars.outputs.sha_short }}
-
-      - name: Upload output file x86_64
-        uses: actions/upload-artifact@v4
-        with:
-          name: goodbyedpi_x86_64_${{ steps.vars.outputs.sha_short }}
-          path: goodbyedpi_x86_64_${{ steps.vars.outputs.sha_short }}
-
-      - name: Compile i686
-        run: >
-          cd src && make clean &&
-          make CPREFIX=i686-w64-mingw32- WINDIVERTHEADERS=../${{ env.WINDIVERT_BASENAME }}/include WINDIVERTLIBS=../${{ env.WINDIVERT_BASENAME }}/x86 -j4
-
-      - name: Prepare x86 directory
-        run: |
-          mkdir goodbyedpi_x86_${{ steps.vars.outputs.sha_short }}
-          cp src/goodbyedpi.exe ${{ env.WINDIVERT_BASENAME }}/x86/*.{dll,sys} goodbyedpi_x86_${{ steps.vars.outputs.sha_short }}
-
-      - name: Upload output file x86
-        uses: actions/upload-artifact@v4
-        with:
-          name: goodbyedpi_x86_${{ steps.vars.outputs.sha_short }}
-          path: goodbyedpi_x86_${{ steps.vars.outputs.sha_short }}
+    - uses: actions/checkout@v3
+      with:
+        submodules: 'recursive'
+    
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-binutils
+          make
+    
+    - name: Prepare WinDivert
+      shell: msys2 {0}
+      run: |
+        echo "Downloading WinDivert..."
+        mkdir -p WinDivert-2.2.0-D
+        curl -L -o windivert.zip https://github.com/basil00/Divert/releases/download/v2.2.0/WinDivert-2.2.0-D.zip
+        unzip windivert.zip -d WinDivert-2.2.0-D
+        echo "WinDivert contents:"
+        ls -la WinDivert-2.2.0-D
+    
+    - name: Build 32-bit version
+      shell: msys2 {0}
+      run: |
+        cd src
+        make clean
+        make CPREFIX=i686-w64-mingw32- WINDIVERTHEADERS=../WinDivert-2.2.0-D/include WINDIVERTLIBS=../WinDivert-2.2.0-D/x86 -j4
+    
+    - name: Build 64-bit version
+      shell: msys2 {0}
+      run: |
+        cd src
+        make clean
+        make CPREFIX=x86_64-w64-mingw32- BIT64=1 WINDIVERTHEADERS=../WinDivert-2.2.0-D/include WINDIVERTLIBS=../WinDivert-2.2.0-D/x64 -j4
+    
+    - name: Upload 32-bit artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: GoodbyeDPI-x86
+        path: src/32_exe/
+    
+    - name: Upload 64-bit artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: GoodbyeDPI-x64
+        path: src/64_exe/

@@ -1,9 +1,6 @@
 @ECHO OFF
-echo This script should be run with administrator privileges.
-echo Right click - run as administrator.
-echo Press any key if you're running it as administrator.
-pause
-sc stop "GoodbyeDPI"
-sc delete "GoodbyeDPI"
-sc stop "WinDivert1.4"
-sc delete "WinDivert1.4"
+REM Sessiz çalışma için kullanıcı mesajları kaldırıldı
+sc stop "GoodbyeDPI" >nul 2>&1
+sc delete "GoodbyeDPI" >nul 2>&1
+sc stop "WinDivert1.4" >nul 2>&1
+sc delete "WinDivert1.4" >nul 2>&1

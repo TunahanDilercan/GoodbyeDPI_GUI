@@ -13,6 +13,5 @@ int  script_run(int idx);
 void script_stop(void);
 Script* scripts_get_all(void);
 void scripts_free(void);
-int get_default_script_index(void);
 
 #endif

@@ -43,13 +43,19 @@
 
 #define WM_APP_RESTART (WM_APP+100) // Custom message for restarting the application
 #define WM_APP_BALLOON_CLICK (WM_APP+101) // When balloon notification is clicked
+#define WM_APP_AUTO_START (WM_APP+102) // Custom message for auto-starting after delay
 
 // Watchdog timer ID
 #define IDT_WATCHDOG 1001
 #define WATCHDOG_INTERVAL 10000 // 10 seconds
 
+// Auto-start timer ID
+#define IDT_AUTO_START 2001
+#define AUTO_START_DELAY 3000 // 3 seconds delay before auto-starting
+#define AUTO_SCRIPT_SWITCH_DELAY 1000 // 1 second delay before auto-starting after script switch
+
 // Default script name, will be selected automatically
-#define DEFAULT_SCRIPT_NAME "Any Country with DNS Redirector"
+#define DEFAULT_SCRIPT_NAME "turkey_dnsredir_alternative4"
 
 static NOTIFYICONDATA nid = {0};
 static HMENU hMenu;
@@ -79,6 +85,8 @@ static int scripts_size = 0;
 static Script *scripts = NULL;
 static int script_count = 0;
 static char **script_names = NULL;
+static BOOL auto_start_pending = FALSE;  // Flag for auto-start after initial delay
+static BOOL script_switch_pending = FALSE;  // Flag for script switching in progress
 
 // Forward declarations of functions to avoid implicit declaration errors
 HMENU create_popup_menu(void);
@@ -101,6 +109,8 @@ static BOOL check_and_copy_windivert_dll(void);
 static BOOL is_admin(void);  // is_admin() prototipi eklendi
 static void restart_as_admin(void);  // restart_as_admin() prototipi eklendi
 static BOOL install_windivert_driver(void); // install_windivert_driver() prototipi eklendi
+static void log_info(const char* format, ...);  // log_info() prototype added
+static void log_error(const char* format, ...);  // log_error() prototype added
 
 // Helper function to identify Turkey options
 int is_turkey_option(const char *name) {
@@ -131,7 +141,14 @@ static int find_script_by_name(const char *name) {
 
 // Function to find a default script
 static int find_default_script(void) {
-    // First try to find a Turkey script as default
+    // First try to find "Any Country with DNS Redirector" as default (option 4)
+    for (int i = 0; i < scripts_size; i++) {
+        if (scripts[i].name && strstr(scripts[i].name, "Any Country with DNS Redirector")) {
+            return i;
+        }
+    }
+    
+    // If not found, try to find a Turkey script as default
     for (int i = 0; i < scripts_size; i++) {
         if (is_turkey_option(scripts[i].name)) {
             return i;
@@ -145,6 +162,22 @@ static int find_default_script(void) {
     
     // No scripts available
     return -1;
+}
+
+// Function to get the default script index (option 4 - Any Country with DNS Redirector)
+static int get_default_script_index(void) {
+    int i;
+    
+    // First look for "Any Country with DNS Redirector" (option 4)
+    for (i = 0; i < scripts_size; i++) {
+        if (scripts[i].name && strstr(scripts[i].name, DEFAULT_SCRIPT_NAME)) {
+            log_info("Found default script '%s' at index %d", DEFAULT_SCRIPT_NAME, i);
+            return i;
+        }
+    }
+    
+    // If not found, fall back to find_default_script
+    return find_default_script();
 }
 
 // Function to log errors with timestamp
@@ -1007,11 +1040,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             nid.uTimeout = 3000; // 3 seconds
             Shell_NotifyIcon(NIM_MODIFY, &nid);
             
-            // ÖNEMLİ: Otomatik başlatmayı tamamen devre dışı bırakma
-            // Eskisi: Start automatically if set to autostart
-            // if (get_autostart_enabled()) {
-            //     PostMessage(hwnd, WM_COMMAND, ID_TRAY_START, 0);
-            // }
+            // Set auto-start flag and start the auto-start timer
+            auto_start_pending = TRUE;
+            SetTimer(hwnd, IDT_AUTO_START, AUTO_START_DELAY, NULL);
             
             return 0;
             
@@ -1038,9 +1069,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     selected_script = script_idx; // Set selected_script when selecting from menu
                     save_selected_script(script_idx);
                     
-                    // If already running, restart with new script
+                    // If already running, stop first
                     if (is_running) {
+                        log_info("Script changed while running. Stopping current script and will restart with new script");
                         handle_stop();
+                        
+                        // Set the script_switch_pending flag and start timer for auto-restart
+                        script_switch_pending = TRUE;
+                        SetTimer(hwnd, IDT_AUTO_START, AUTO_SCRIPT_SWITCH_DELAY, NULL);
+                    } 
+                    else {
+                        // Not running - start automatically when user selects a script
+                        log_info("Script selected while paused, starting automatically");
                         handle_start();
                     }
                 } else {
@@ -1049,15 +1089,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                             DestroyWindow(hwnd);
                             break;
                             
-                        case ID_TRAY_START:
-                            handle_start();
-                            break;
-                            
-                        case ID_TRAY_STOP:
-                            handle_stop();
-                            break;
-                            
-                        case ID_TRAY_AUTOSTART:
                             {
                                 BOOL current = get_autostart_enabled();
                                 set_autostart(!current);
@@ -1085,6 +1116,38 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 handle_stop();
                 Sleep(1000); // Wait for process to terminate
                 handle_start();
+            }
+            return 0;
+
+        case WM_TIMER:
+            if (wParam == IDT_AUTO_START) {
+                // Auto-start timer yönetimi
+                KillTimer(hwnd, IDT_AUTO_START);
+                
+                if (auto_start_pending) {
+                    auto_start_pending = FALSE;
+                    log_info("Auto-start timer fired, starting the program automatically");
+                    handle_start();
+                }
+                else if (script_switch_pending) {
+                    script_switch_pending = FALSE;
+                    log_info("Script switch timer fired, starting the program with new script");
+                    handle_start();
+                }
+            }
+            else if (wParam == IDT_WATCHDOG) {
+                // Watchdog timer yönetimi
+                log_info("Watchdog timer fired, checking if the program is still running");
+                
+                if (is_running && !is_goodbyedpi_running()) {
+                    // GoodbyeDPI çalışır görünüyor ancak aslında çalışmıyor
+                    log_error("Watchdog detected: GoodbyeDPI is not running but flag is set");
+                    is_running = 0;
+                    update_tray_icon(hwnd);
+                    show_balloon_notification("Error", 
+                                           "GoodbyeDPI has stopped unexpectedly", 
+                                           NIIF_ERROR);
+                }
             }
             return 0;
             

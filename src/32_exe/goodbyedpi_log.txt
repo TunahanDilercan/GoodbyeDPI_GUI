@@ -1,52 +1,93 @@
-=== Log başlatıldı - May  1 2025 ===
+=== Log started - May  1 2025 ===
+[scripts] Added script #0: Russia Blacklist DNS Redirect
+[scripts] Added script #1: Any Country DNS Redirect
+[scripts] Added script #2: Any Country Standard
+[scripts] Added script #3: [TR] DNS Redirect
+[scripts] Added script #4: [TR] Alternative 2
+[scripts] Added script #5: [TR] Alternative 3
+[scripts] Added script #6: [TR] Alternative 4
+[scripts] Added script #7: [TR] Alternative 5
+[scripts] Added script #8: [TR] Alternative 6
+[scripts] Added script #9: [TR] TTL 3 Only
 [GUI] WM_CREATE: Initialized scripts, count=10
 [GUI] WM_CREATE: Got scripts, scripts_size=10
 [GUI] WM_CREATE: Loaded selected script index=6
 [GUI] WM_CREATE: Set selected_script=6
-[2025-05-01 19:59:01] handle_start called, is_running=0
-[2025-05-01 19:59:01] Checking admin privileges
-Checking administrator privileges...
-Administrator check result: YES
-[2025-05-01 19:59:01] Admin check passed
-[2025-05-01 19:59:01] Checking WinDivert.dll
-Checking WinDivert.dll...
-WinDivert.dll found next to executable: D:\FilesHan\kod\GUI\v2.1\GoodbyeDPI-master\src\32_exe\WinDivert.dll
-[2025-05-01 19:59:01] WinDivert.dll check passed
-[2025-05-01 19:59:01] Installing WinDivert driver
-Attempting to install WinDivert driver...
-WinDivert service is already running
-[2025-05-01 19:59:01] WinDivert driver installed successfully
-[2025-05-01 19:59:01] Checking script selection (selected_script=16, scripts_size=20)
-[2025-05-01 19:59:01] Using script: [TR] Alternative 4 (index=16)
-[2025-05-01 19:59:01] Başlatma işlemini yapıyorum: [TR] Alternative 4
-[script_stop] Stopping GoodbyeDPI...
-[script_stop] GoodbyeDPI stopped successfully
-[script_run] Running script: [TR] Alternative 4 with args: -5 --dns-addr 77.88.8.8 --dns-port 1253 --dnsv6-addr 2a02:6b8::feed:0ff --dnsv6-port 1253
-[script_run] Script [TR] Alternative 4 parsed: 10 arguments
-  argv[0]: 'goodbyedpi.exe'
-  argv[1]: '-5'
-  argv[2]: '--dns-addr'
-  argv[3]: '77.88.8.8'
-  argv[4]: '--dns-port'
-  argv[5]: '1253'
-  argv[6]: '--dnsv6-addr'
-  argv[7]: '2a02:6b8::feed:0ff'
-  argv[8]: '--dnsv6-port'
-  argv[9]: '1253'
-start_goodbyedpi called with 10 arguments:
-  argv[0]: goodbyedpi.exe
-  argv[1]: -5
-  argv[2]: --dns-addr
-  argv[3]: 77.88.8.8
-  argv[4]: --dns-port
-  argv[5]: 1253
-  argv[6]: --dnsv6-addr
-  argv[7]: 2a02:6b8::feed:0ff
-  argv[8]: --dnsv6-port
-  argv[9]: 1253
-WinDivert servisi zaten çalışıyor.
-Creating thread for dpi_thread
-Thread created successfully
-[script_run] start_goodbyedpi result: 0 (success)
-[2025-05-01 19:59:02] script_run returned 0
-[2025-05-01 19:59:02] Script started successfully, is_running=1
+[scripts] Duplicate script detected: Russia Blacklist DNS Redirect (skipping)
+[scripts] Duplicate script detected: Any Country DNS Redirect (skipping)
+[scripts] Duplicate script detected: Any Country Standard (skipping)
+[scripts] Duplicate script detected: [TR] DNS Redirect (skipping)
+[scripts] Duplicate script detected: [TR] Alternative 2 (skipping)
+[scripts] Duplicate script detected: [TR] Alternative 3 (skipping)
+[scripts] Duplicate script detected: [TR] Alternative 4 (skipping)
+[scripts] Duplicate script detected: [TR] Alternative 5 (skipping)
+[scripts] Duplicate script detected: [TR] Alternative 6 (skipping)
+[scripts] Duplicate script detected: [TR] TTL 3 Only (skipping)
+[2025-05-01 21:48:32] Re-initializing scripts before creating menu
+[scripts] Added script #0: Russia Blacklist DNS Redirect
+[scripts] Added script #1: Any Country DNS Redirect
+[scripts] Added script #2: Any Country Standard
+[scripts] Added script #3: [TR] DNS Redirect
+[scripts] Added script #4: [TR] Alternative 2
+[scripts] Added script #5: [TR] Alternative 3
+[scripts] Added script #6: [TR] Alternative 4
+[scripts] Added script #7: [TR] Alternative 5
+[scripts] Added script #8: [TR] Alternative 6
+[scripts] Added script #9: [TR] TTL 3 Only
+[2025-05-01 21:48:32] Menu creation - scripts count: 10
+[2025-05-01 21:48:32] Creating menu with 10 scripts
+[2025-05-01 21:48:32] Processing script 0: Russia Blacklist DNS Redirect
+[2025-05-01 21:48:32] Added to Other menu: Russia Blacklist DNS Redirect (ID=2000)
+[2025-05-01 21:48:32] Processing script 1: Any Country DNS Redirect
+[2025-05-01 21:48:32] Added to Other menu: Any Country DNS Redirect (ID=2001)
+[2025-05-01 21:48:32] Processing script 2: Any Country Standard
+[2025-05-01 21:48:32] Added to Other menu: Any Country Standard (ID=2002)
+[2025-05-01 21:48:32] Processing script 3: [TR] DNS Redirect
+[2025-05-01 21:48:32] Added to Other menu: [TR] DNS Redirect (ID=2003)
+[2025-05-01 21:48:32] Processing script 4: [TR] Alternative 2
+[2025-05-01 21:48:32] Added to Other menu: [TR] Alternative 2 (ID=2004)
+[2025-05-01 21:48:32] Processing script 5: [TR] Alternative 3
+[2025-05-01 21:48:32] Added to Other menu: [TR] Alternative 3 (ID=2005)
+[2025-05-01 21:48:32] Processing script 6: [TR] Alternative 4
+[2025-05-01 21:48:32] Added to Other menu: [TR] Alternative 4 (ID=2006)
+[2025-05-01 21:48:32] Processing script 7: [TR] Alternative 5
+[2025-05-01 21:48:32] Added to Other menu: [TR] Alternative 5 (ID=2007)
+[2025-05-01 21:48:32] Processing script 8: [TR] Alternative 6
+[2025-05-01 21:48:32] Added to Other menu: [TR] Alternative 6 (ID=2008)
+[2025-05-01 21:48:32] Processing script 9: [TR] TTL 3 Only
+[2025-05-01 21:48:32] Added to Other menu: [TR] TTL 3 Only (ID=2009)
+[2025-05-01 21:48:32] Menu creation complete - Turkey items: 0, Other items: 10
+[2025-05-01 21:49:26] Re-initializing scripts before creating menu
+[scripts] Added script #0: Russia Blacklist DNS Redirect
+[scripts] Added script #1: Any Country DNS Redirect
+[scripts] Added script #2: Any Country Standard
+[scripts] Added script #3: [TR] DNS Redirect
+[scripts] Added script #4: [TR] Alternative 2
+[scripts] Added script #5: [TR] Alternative 3
+[scripts] Added script #6: [TR] Alternative 4
+[scripts] Added script #7: [TR] Alternative 5
+[scripts] Added script #8: [TR] Alternative 6
+[scripts] Added script #9: [TR] TTL 3 Only
+[2025-05-01 21:49:26] Menu creation - scripts count: 10
+[2025-05-01 21:49:26] Creating menu with 10 scripts
+[2025-05-01 21:49:26] Processing script 0: Russia Blacklist DNS Redirect
+[2025-05-01 21:49:26] Added to Other menu: Russia Blacklist DNS Redirect (ID=2000)
+[2025-05-01 21:49:26] Processing script 1: Any Country DNS Redirect
+[2025-05-01 21:49:26] Added to Other menu: Any Country DNS Redirect (ID=2001)
+[2025-05-01 21:49:26] Processing script 2: Any Country Standard
+[2025-05-01 21:49:26] Added to Other menu: Any Country Standard (ID=2002)
+[2025-05-01 21:49:26] Processing script 3: [TR] DNS Redirect
+[2025-05-01 21:49:26] Added to Other menu: [TR] DNS Redirect (ID=2003)
+[2025-05-01 21:49:26] Processing script 4: [TR] Alternative 2
+[2025-05-01 21:49:26] Added to Other menu: [TR] Alternative 2 (ID=2004)
+[2025-05-01 21:49:26] Processing script 5: [TR] Alternative 3
+[2025-05-01 21:49:26] Added to Other menu: [TR] Alternative 3 (ID=2005)
+[2025-05-01 21:49:26] Processing script 6: [TR] Alternative 4
+[2025-05-01 21:49:26] Added to Other menu: [TR] Alternative 4 (ID=2006)
+[2025-05-01 21:49:26] Processing script 7: [TR] Alternative 5
+[2025-05-01 21:49:26] Added to Other menu: [TR] Alternative 5 (ID=2007)
+[2025-05-01 21:49:26] Processing script 8: [TR] Alternative 6
+[2025-05-01 21:49:26] Added to Other menu: [TR] Alternative 6 (ID=2008)
+[2025-05-01 21:49:26] Processing script 9: [TR] TTL 3 Only
+[2025-05-01 21:49:26] Added to Other menu: [TR] TTL 3 Only (ID=2009)
+[2025-05-01 21:49:26] Menu creation complete - Turkey items: 0, Other items: 10

@@ -238,9 +238,15 @@ HMENU create_popup_menu(void) {
     AppendMenu(hPopup, MF_STRING, ID_TRAY_STOP, "Stop");
     AppendMenu(hPopup, MF_SEPARATOR, 0, NULL);
 
+    // Re-initialize scripts to ensure we have the latest data
+    log_info("Re-initializing scripts before creating menu");
+    scripts_free();  // Free existing scripts if any
+    scripts_init();  // Re-initialize scripts
+
     // Count available scripts
     scripts_size = scripts_count();
     scripts = scripts_get_all();
+    log_info("Menu creation - scripts count: %d", scripts_size);
 
     // Create categories submenu
     HMENU hTurkeyMenu = CreatePopupMenu();
@@ -249,25 +255,71 @@ HMENU create_popup_menu(void) {
     // Add script options to appropriate submenus
     int turkey_count = 0;
     int other_count = 0;
+    
+    // Track added script names to avoid duplicates
+    char added_scripts[256][256] = {0};
+    int added_count = 0;
 
-    for (int i = 0; i < scripts_size; i++) {
+    // Log the script names for debugging
+    log_info("Creating menu with %d scripts", scripts_size);
+    
+    for (int i = 0; i < scripts_size && i < 256; i++) {
         char sanitized_name[256] = {0};
+        
+        // Ensure the script name is valid
+        if (!scripts[i].name) {
+            log_error("Script at index %d has NULL name", i);
+            continue;
+        }
+        
         sanitize_name(scripts[i].name, sanitized_name, sizeof(sanitized_name));
+        log_info("Processing script %d: %s", i, sanitized_name);
         
-        MENUITEMINFO mii = {0};
-        mii.cbSize = sizeof(MENUITEMINFO);
-        mii.fMask = MIIM_ID | MIIM_STRING | MIIM_STATE;
-        mii.wID = ID_TRAY_SCRIPT_FIRST + i;
-        mii.dwTypeData = sanitized_name;
-        mii.fState = (i == last_selected_idx) ? MFS_CHECKED : MFS_UNCHECKED;
+        // Check if this script name has already been added
+        int is_duplicate = 0;
+        for (int j = 0; j < added_count; j++) {
+            if (strcmp(added_scripts[j], sanitized_name) == 0) {
+                is_duplicate = 1;
+                log_info("Script '%s' is a duplicate, skipping", sanitized_name);
+                break;
+            }
+        }
         
-        // Add to Turkey menu if it contains TR or Turkey
-        if (is_turkey_option(sanitized_name)) {
-            InsertMenuItem(hTurkeyMenu, turkey_count++, TRUE, &mii);
-        } else {
-            InsertMenuItem(hOtherMenu, other_count++, TRUE, &mii);
+        // Skip if duplicate
+        if (is_duplicate) {
+            continue;
+        }
+        
+        // Add to the list of added scripts
+        if (added_count < 256) {
+            strncpy(added_scripts[added_count], sanitized_name, 255);
+            added_scripts[added_count][255] = '\0'; // Ensure null termination
+            
+            MENUITEMINFO mii = {0};
+            mii.cbSize = sizeof(MENUITEMINFO);
+            mii.fMask = MIIM_ID | MIIM_STRING | MIIM_STATE | MIIM_DATA;
+            mii.wID = ID_TRAY_SCRIPT_FIRST + added_count;
+            mii.dwTypeData = sanitized_name;
+            mii.dwItemData = (ULONG_PTR)i; // Store original script index as item data
+            
+            // Check if this script is currently selected
+            BOOL is_selected = (i == last_selected_idx);
+            mii.fState = is_selected ? MFS_CHECKED : MFS_UNCHECKED;
+            
+            // Add to Turkey menu if it contains TR or Turkey
+            if (is_turkey_option(sanitized_name)) {
+                InsertMenuItem(hTurkeyMenu, turkey_count++, TRUE, &mii);
+                log_info("Added to Turkey menu: %s (ID=%d)", sanitized_name, mii.wID);
+            } else {
+                InsertMenuItem(hOtherMenu, other_count++, TRUE, &mii);
+                log_info("Added to Other menu: %s (ID=%d)", sanitized_name, mii.wID);
+            }
+            
+            added_count++;
         }
     }
+
+    log_info("Menu creation complete - Turkey items: %d, Other items: %d", turkey_count, other_count);
 
     // Add submenus to main menu
     if (turkey_count > 0) {
@@ -342,7 +394,7 @@ static void handle_start(void) {
     if (!is_admin()) {
         log_error("Attempting to start without administrator privileges");
         show_balloon_notification("Error", 
-                               "GoodbyeDPI requires administrator privileges to run", 
+                               "Administrator permissions required", 
                                NIIF_ERROR);
         restart_as_admin();
         return;
@@ -354,7 +406,7 @@ static void handle_start(void) {
     if (!check_and_copy_windivert_dll()) {
         log_error("WinDivert.dll could not be found or copied");
         show_balloon_notification("Error", 
-                               "Required WinDivert.dll file not found or could not be copied", 
+                               "WinDivert.dll not found", 
                                NIIF_ERROR);
         return;
     }
@@ -365,13 +417,13 @@ static void handle_start(void) {
     if (!install_windivert_driver()) {
         log_error("Failed to install WinDivert driver");
         show_balloon_notification("Error", 
-                               "Failed to install WinDivert driver", 
+                               "WinDivert driver could not be installed", 
                                NIIF_ERROR);
         return;
     }
     log_info("WinDivert driver installed successfully");
     
-    // Script kontrolü yap - eğer script seçili değilse varsayılanı kullan
+    // Check script selection - use default if no script is selected
     log_info("Checking script selection (selected_script=%d, scripts_size=%d)", selected_script, scripts_size);
     if (selected_script < 0 || selected_script >= scripts_size) {
         log_info("No valid script selected, trying to get default script");
@@ -392,7 +444,7 @@ static void handle_start(void) {
     }
     
     // Set running flag first, to avoid race conditions
-    log_info("Başlatma işlemini yapıyorum: %s", scripts[selected_script].name);
+    log_info("Starting operation: %s", scripts[selected_script].name);
     
     // Start the selected script
     int result = script_run(selected_script);
@@ -413,29 +465,29 @@ static void handle_start(void) {
             EnableMenuItem(hPopupMenu, ID_TRAY_STOP, MF_ENABLED);
         }
         
-        // Show success notification
-        show_balloon_notification("GoodbyeDPI Started", 
-                                "DPI circumvention is now active", 
-                                NIIF_INFO);
+        // Sadece simge değiştiğini bildirim olarak göster, ayrı bir bildirim gösterme
+        // show_balloon_notification("GoodbyeDPI Started", 
+        //                        "DPI circumvention is now active", 
+        //                        NIIF_INFO);
     }
     else {
         log_error("Failed to start script: %s, error code: %d", scripts[selected_script].name, result);
         show_balloon_notification("Error", 
-                                "Failed to start DPI circumvention", 
+                                "Program could not be started", 
                                 NIIF_ERROR);
     }
 }
 
 // Stop the DPI bypass process
 static void handle_stop(void) {
-    log_info("handle_stop çağrıldı, is_running=%d", is_running);
+    log_info("handle_stop called, is_running=%d", is_running);
     
     if (!is_running) {
-        log_info("Zaten durdurulmuş, durdurma isteği yok sayılıyor");
+        log_info("Already stopped, ignoring stop request");
         return; // Already stopped
     }
 
-    log_info("GoodbyeDPI durdurulacak");
+    log_info("GoodbyeDPI will be stopped");
     script_stop();
     
     // Wait a bit to ensure the script_stop completed
@@ -443,10 +495,10 @@ static void handle_stop(void) {
     
     // Verify it's actually stopped by checking the running state
     if (is_goodbyedpi_running()) {
-        log_error("GoodbyeDPI durdurma başarısız, zorla kapatılıyor");
+        log_error("GoodbyeDPI stop failed, force terminating");
         terminate_goodbyedpi();
     } else {
-        log_info("GoodbyeDPI başarıyla durduruldu");
+        log_info("GoodbyeDPI stopped successfully");
     }
 
     // Update UI state
@@ -460,11 +512,12 @@ static void handle_stop(void) {
         EnableMenuItem(hPopupMenu, ID_TRAY_STOP, MF_GRAYED);
     }
     
-    show_balloon_notification("GoodbyeDPI Stopped", 
-                              "DPI circumvention is now inactive", 
-                              NIIF_INFO);
+    // Sadece simge değiştiğini bildirim olarak göster, ayrı bir bildirim gösterme
+    // show_balloon_notification("GoodbyeDPI Stopped", 
+    //                         "DPI circumvention is now inactive", 
+    //                         NIIF_INFO);
     
-    log_info("handle_stop tamamlandı, is_running=0");
+    log_info("handle_stop completed, is_running=0");
 }
 
 // Function to get the directory of the executable
@@ -865,12 +918,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             // Log dosyalarını temizle - her derleme/çalıştırmada sıfırlar
             FILE *clearLog = fopen("goodbyedpi_log.txt", "w");
             if (clearLog) {
-                fprintf(clearLog, "=== Log başlatıldı - %s ===\n", __DATE__);
+                fprintf(clearLog, "=== Log started - %s ===\n", __DATE__);
                 fclose(clearLog);
             }
+            
             clearLog = fopen("goodbyedpi_error.log", "w");
             if (clearLog) {
-                fprintf(clearLog, "=== Hata logu başlatıldı - %s ===\n", __DATE__);
+                fprintf(clearLog, "=== Error log started - %s ===\n", __DATE__);
                 fclose(clearLog);
             }
             
@@ -944,6 +998,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 fprintf(logfile, "[GUI] WM_CREATE: Set selected_script=%d\n", selected_script);
                 fclose(logfile);
             }
+
+            // Show initial notification in English instead of Turkish
+            nid.uFlags |= NIF_INFO;
+            _snprintf(nid.szInfoTitle, sizeof(nid.szInfoTitle), "GoodbyeDPI");
+            _snprintf(nid.szInfo, sizeof(nid.szInfo), "Program is running in system tray");
+            nid.dwInfoFlags = NIIF_INFO;
+            nid.uTimeout = 3000; // 3 seconds
+            Shell_NotifyIcon(NIM_MODIFY, &nid);
             
             // ÖNEMLİ: Otomatik başlatmayı tamamen devre dışı bırakma
             // Eskisi: Start automatically if set to autostart
@@ -1072,13 +1134,13 @@ static void clear_log_files(void) {
     // Log dosyalarını temizle
     FILE *clearLog = fopen("goodbyedpi_log.txt", "w");
     if (clearLog) {
-        fprintf(clearLog, "=== Log başlatıldı - %s ===\n", __DATE__);
+        fprintf(clearLog, "=== Log started - %s ===\n", __DATE__);
         fclose(clearLog);
     }
     
     clearLog = fopen("goodbyedpi_error.log", "w");
     if (clearLog) {
-        fprintf(clearLog, "=== Hata logu başlatıldı - %s ===\n", __DATE__);
+        fprintf(clearLog, "=== Error log started - %s ===\n", __DATE__);
         fclose(clearLog);
     }
 }
@@ -1088,7 +1150,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // Log başlangıç bilgisi ekle, temizlemeden
     FILE *logfile = fopen("goodbyedpi_log.txt", "a");
     if (logfile) {
-        fprintf(logfile, "\n=== Program başlatıldı - %s ===\n", __DATE__);
+        fprintf(logfile, "\n=== Program started - %s ===\n", __DATE__);
         fclose(logfile);
     }
     
@@ -1209,13 +1271,24 @@ BOOL prompt_iteration_continue(HWND hwnd) {
 
 // Show balloon notification
 static void show_balloon_notification(const char* title, const char* message, DWORD info_flags) {
+    // Bildirim gösterme süresi 5 saniye olarak ayarlandı (daha önce 10 saniye idi)
+    static DWORD lastNotificationTime = 0;
+    DWORD currentTime = GetTickCount();
+    
+    // En az 3 saniye geçmediyse yeni bildirim gösterme
+    if (lastNotificationTime != 0 && (currentTime - lastNotificationTime < 3000)) {
+        // Çok sık bildirim göstermekten kaçınmak için atla
+        return;
+    }
+    
     nid.uFlags |= NIF_INFO;
     _snprintf(nid.szInfoTitle, sizeof(nid.szInfoTitle), "%s", title);
     _snprintf(nid.szInfo, sizeof(nid.szInfo), "%s", message);
     nid.dwInfoFlags = info_flags;
-    nid.uTimeout = 10000;
+    nid.uTimeout = 5000;  // 5 saniye
     
     Shell_NotifyIcon(NIM_MODIFY, &nid);
+    lastNotificationTime = currentTime;
 }
 
 // Function to check if application is set to run at startup

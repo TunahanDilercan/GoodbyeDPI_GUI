@@ -4,24 +4,54 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_SCRIPTS 32  // Desteklenen maksimum script sayısını artırdım
+#define MAX_SCRIPTS 32  // Increase the maximum number of supported scripts
 #define MAX_ARGS 32
-#define DEFAULT_SCRIPT_NAME "Any Country DNS Redirect"  // Varsayılan script adını belirledim
+#define DEFAULT_SCRIPT_NAME "Any Country DNS Redirect"  // Set the default script name
 
 static Script scripts[MAX_SCRIPTS];
 static int scnt = 0;
-static int default_script_index = -1;  // Varsayılan script indeksi
+static int default_script_index = -1;  // Default script index
 
-// Batch scriptlerden argümanları çıkar
+// Extract arguments from batch scripts
 static void add_script(const char *name, const char *args)
 {
     if (scnt >= MAX_SCRIPTS) return;
+    
+    // Check if script with same name already exists to avoid duplicates
+    for (int i = 0; i < scnt; i++) {
+        if (strcmp(scripts[i].name, name) == 0) {
+            // Script with same name already exists, don't add it again
+            FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+            if (logfile) {
+                fprintf(logfile, "[scripts] Duplicate script detected: %s (skipping)\n", name);
+                fclose(logfile);
+            }
+            return;
+        }
+    }
+    
+    // Clear memory before setting
+    memset(scripts[scnt].name, 0, sizeof(scripts[scnt].name));
+    memset(scripts[scnt].args, 0, sizeof(scripts[scnt].args));
+    
+    // Copy with safe length limits
     strncpy(scripts[scnt].name, name, sizeof(scripts[scnt].name)-1);
     strncpy(scripts[scnt].args, args, sizeof(scripts[scnt].args)-1);
     
-    // Varsayılan scripti işaretle
+    // Ensure null termination
+    scripts[scnt].name[sizeof(scripts[scnt].name)-1] = '\0';
+    scripts[scnt].args[sizeof(scripts[scnt].args)-1] = '\0';
+    
+    // Mark the default script
     if (strcmp(name, DEFAULT_SCRIPT_NAME) == 0) {
         default_script_index = scnt;
+    }
+    
+    // Log successful addition
+    FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "[scripts] Added script #%d: %s\n", scnt, name);
+        fclose(logfile);
     }
     
     scnt++;
@@ -29,15 +59,15 @@ static void add_script(const char *name, const char *args)
 
 void scripts_init(void)
 {
-    // Scriptler .cmd dosyalarından aktarıldı - tam yapılandırmalar
-    // Önceki .cmd dosyaları incelenip içeriklerindeki parametreler doğrudan buraya aktarıldı
+    // Scripts transferred from .cmd files - full configurations
+    // Previous .cmd files were reviewed and their parameters were directly transferred here
     
-    // Ana scriptler
+    // Main scripts
     add_script("Russia Blacklist DNS Redirect", "-5 --dns-addr 77.88.8.8 --dns-port 1253 --dnsv6-addr 2a02:6b8::feed:0ff --dnsv6-port 1253 --blacklist ..\\russia-blacklist.txt");
     add_script(DEFAULT_SCRIPT_NAME, "-5 --dns-addr 77.88.8.8 --dns-port 1253 --dnsv6-addr 2a02:6b8::feed:0ff --dnsv6-port 1253");
     add_script("Any Country Standard", "-5");
     
-    // Türkiye scriptleri - Turkey klasöründeki .cmd dosyalarından
+    // Turkey scripts - From .cmd files in the Turkey folder
     add_script("[TR] DNS Redirect", "-5 --set-ttl 5 --dns-addr 77.88.8.8 --dns-port 1253 --dnsv6-addr 2a02:6b8::feed:0ff --dnsv6-port 1253");
     add_script("[TR] Alternative 2", "-5");
     add_script("[TR] Alternative 3", "--set-ttl 3 --dns-addr 77.88.8.8 --dns-port 1253 --dnsv6-addr 2a02:6b8::feed:0ff --dnsv6-port 1253");
@@ -47,53 +77,53 @@ void scripts_init(void)
     add_script("[TR] TTL 3 Only", "--set-ttl 3");
 }
 
-// Varsayılan script indeksini döndüren fonksiyon
+// Function to return the default script index
 int get_default_script_index(void) {
-    // Eğer default_script_index geçerli değilse, ilk Türkiye scriptini dene
+    // If default_script_index is invalid, try the first Turkey script
     if (default_script_index < 0) {
         for (int i = 0; i < scnt; i++) {
             if (strstr(scripts[i].name, "[TR]")) {
                 return i;
             }
         }
-        // Türkiye scripti yoksa ilk scripti kullan
+        // If no Turkey script exists, use the first script
         return (scnt > 0) ? 0 : -1;
     }
     return default_script_index;
 }
 
-// Tüm script dizisini döndüren fonksiyon
+// Function to return the entire script array
 Script* scripts_get_all(void) {
     return scripts;
 }
 
-// Temizleme fonksiyonu (gerçek bir bellek temizliği yapılmıyor çünkü statik dizi)
+// Cleanup function (no actual memory cleanup since static array is used)
 void scripts_free(void) {
-    // Şu anda gerçek bir bellek temizliği gerekmiyor, 
-    // ileride dinamik bellek tahsisi yapılırsa kullanılabilir
+    // No actual memory cleanup needed for now, 
+    // can be used if dynamic memory allocation is implemented in the future
     scnt = 0;
 }
 
 int scripts_count(void) { return scnt; }
 const Script* script_get(int i) { return (i >= 0 && i < scnt) ? &scripts[i] : NULL; }
 
-// Argümanları boşluklardan ayırıp argv dizisi oluştur
+// Split arguments by spaces and create argv array
 static int parse_args(const char *args, char **argv)
 {
     int argc = 1;
     char *safe_buffer;
     
-    // argv[0] her zaman program adı
+    // argv[0] is always the program name
     argv[0] = _strdup("goodbyedpi.exe");
     
-    // Güvenli bir buffer oluştur ve argümanları kopyala
-    safe_buffer = _strdup(args); // strdup ile bellek ayrılır
-    if (!safe_buffer) return argc; // bellek hatası durumunda geri dön
+    // Create a safe buffer and copy arguments
+    safe_buffer = _strdup(args); // Memory allocated with strdup
+    if (!safe_buffer) return argc; // Return in case of memory error
     
-    // Buffer string üzerinde tokenizing işlemi
+    // Tokenizing the buffer string
     char *token = strtok(safe_buffer, " ");
     while (token && argc < MAX_ARGS-1) {
-        // Her argüman için yeni bellek ayır
+        // Allocate new memory for each argument
         argv[argc] = _strdup(token);
         if (argv[argc]) {
             argc++;
@@ -103,7 +133,7 @@ static int parse_args(const char *args, char **argv)
     
     argv[argc] = NULL;
     
-    // safe_buffer'ı serbest bırak, argv içerikleri ayrı bellekte
+    // Free safe_buffer, argv contents are in separate memory
     free(safe_buffer);
     
     return argc;
@@ -113,16 +143,16 @@ int script_run(int idx)
 {
     if (idx < 0 || idx >= scnt) return -1;
     
-    // Önce mevcut işlemi düzgün şekilde durdurduğumuzdan emin olalım
+    // Ensure the current process is properly stopped first
     script_stop();
     
-    // İşlemin tamamen durması için biraz bekle
+    // Wait a bit to ensure the process is completely stopped
     Sleep(300);
     
-    // Temiz bir argv dizisi ayır ve sıfırla
+    // Allocate and initialize a clean argv array
     char *argv[MAX_ARGS] = {0};
     
-    // Logla
+    // Log
     FILE *logfile = fopen("goodbyedpi_log.txt", "a");
     if (logfile) {
         fprintf(logfile, "[%s] Running script: %s with args: %s\n", 
@@ -130,10 +160,10 @@ int script_run(int idx)
         fclose(logfile);
     }
     
-    // Argümanları parse et
+    // Parse arguments
     int argc = parse_args(scripts[idx].args, argv);
     
-    // Argümanları doğrula
+    // Validate arguments
     logfile = fopen("goodbyedpi_log.txt", "a");
     if (logfile) {
         fprintf(logfile, "[%s] Script %s parsed: %d arguments\n", 
@@ -152,10 +182,10 @@ int script_run(int idx)
         fclose(logfile);
     }
     
-    // goodbyedpi başlat
+    // Start goodbyedpi
     int result = start_goodbyedpi(argc, argv);
     
-    // Logla
+    // Log
     logfile = fopen("goodbyedpi_log.txt", "a");
     if (logfile) {
         fprintf(logfile, "[%s] start_goodbyedpi result: %d (%s)\n", 
@@ -163,7 +193,7 @@ int script_run(int idx)
         fclose(logfile);
     }
     
-    // start_goodbyedpi kendi kopyasını oluşturduğu için belleği temizle
+    // Free memory allocated by start_goodbyedpi
     for (int i = 0; i < argc; i++) {
         if (argv[i]) {
             free(argv[i]);
@@ -182,13 +212,13 @@ void script_stop(void)
         fclose(logfile);
     }
     
-    // Önce normal durdurma dene
+    // First attempt normal stop
     stop_goodbyedpi();
     
-    // 300ms bekleyerek durdurmanın tamamlanmasını sağla
+    // Wait 300ms to ensure stop is complete
     Sleep(300);
     
-    // Hala çalışıyor mu kontrol et
+    // Check if still running
     if (is_goodbyedpi_running()) {
         logfile = fopen("goodbyedpi_log.txt", "a");
         if (logfile) {
@@ -196,7 +226,7 @@ void script_stop(void)
             fclose(logfile);
         }
         
-        // Zorla sonlandır - Doğrudan stop_goodbyedpi tekrar çağır
+        // Force termination - Directly call stop_goodbyedpi again
         stop_goodbyedpi();
     }
     

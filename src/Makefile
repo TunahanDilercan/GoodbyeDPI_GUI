@@ -30,8 +30,8 @@ endif
 # Derleyici ve bağlayıcı için önekler
 CC = $(CCPREFIX)gcc
 LD = $(CC)
-# Windres için platform bağımsız tanım
-WINDRES = $(CCPREFIX)windres
+# Windres için daha uyumlu tanım - yerel ortamda windres komutunu kullan
+WINDRES = windres
 
 .PHONY: default all clean ensure_dir clean_logs
 
@@ -50,11 +50,11 @@ ensure_dir:
 	@mkdir -p $(DIR)
 	@mkdir -p $(DEST_DIR)
 
-# Her derleme işleminde log dosyalarını temizleyen hedef
+# Log dosyalarını temizleyen hedef - Turkce karakter kullanmadan
 clean_logs:
 	@echo "Cleaning log files for build..."
-	@echo "=== Log başlatıldı - $(shell date '+%d-%m-%Y') ===" > $(DEST_DIR)/goodbyedpi_log.txt
-	@echo "=== Hata logu başlatıldı - $(shell date '+%d-%m-%Y') ===" > $(DEST_DIR)/goodbyedpi_error.log
+	@echo "=== Log started - $(shell date '+%d-%m-%Y') ===" > $(DEST_DIR)/goodbyedpi_log.txt
+	@echo "=== Error log started - $(shell date '+%d-%m-%Y') ===" > $(DEST_DIR)/goodbyedpi_error.log
 
 %.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@

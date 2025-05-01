@@ -58,7 +58,7 @@ static BOOL load_windivert_driver(void) {
         if (GetFileAttributesA(sys_path) == INVALID_FILE_ATTRIBUTES) {
             logfile = fopen("goodbyedpi_error.log", "a");
             if (logfile) {
-                fprintf(logfile, "WinDivert32.sys dosyası bulunamadı: %s\n", sys_path);
+                fprintf(logfile, "WinDivert32.sys file not found: %s\n", sys_path);
                 fclose(logfile);
             }
             goto cleanup;
@@ -71,9 +71,9 @@ static BOOL load_windivert_driver(void) {
         error = GetLastError();
         logfile = fopen("goodbyedpi_error.log", "a");
         if (logfile) {
-            fprintf(logfile, "OpenSCManager başarısız oldu: %lu\n", error);
-            fprintf(logfile, "Bu hata genellikle yönetici haklarının olmadığı anlamına gelir.\n");
-            fprintf(logfile, "Programı YÖNETİCİ OLARAK çalıştırmalısınız!\n");
+            fprintf(logfile, "OpenSCManager failed: %lu\n", error);
+            fprintf(logfile, "This error usually means you don't have administrator rights.\n");
+            fprintf(logfile, "You must run the program AS ADMINISTRATOR!\n");
             fclose(logfile);
         }
         goto cleanup;
@@ -88,7 +88,7 @@ static BOOL load_windivert_driver(void) {
                 // Servis zaten çalışıyor
                 logfile = fopen("goodbyedpi_log.txt", "a");
                 if (logfile) {
-                    fprintf(logfile, "WinDivert servisi zaten çalışıyor.\n");
+                    fprintf(logfile, "WinDivert service is already running.\n");
                     fclose(logfile);
                 }
                 success = TRUE;
@@ -97,29 +97,7 @@ static BOOL load_windivert_driver(void) {
             else if (status.dwCurrentState == SERVICE_STOPPED) {
                 // Servis var ama durdurulmuş, başlatmaya çalış
                 if (StartServiceA(service, 0, NULL)) {
-                    // Başlatıldı
-                    logfile = fopen("goodbyedpi_log.txt", "a");
-                    if (logfile) {
-                        fprintf(logfile, "WinDivert servisi başarıyla başlatıldı.\n");
-                        fclose(logfile);
-                    }
                     success = TRUE;
-                    goto cleanup;
-                }
-                else {
-                    error = GetLastError();
-                    logfile = fopen("goodbyedpi_error.log", "a");
-                    if (logfile) {
-                        fprintf(logfile, "StartService başarısız oldu: %lu\n", error);
-                        if (error == ERROR_SERVICE_DISABLED) {
-                            fprintf(logfile, "WinDivert servisi devre dışı bırakılmış.\n");
-                        }
-                        fclose(logfile);
-                    }
-                    // Servis başlatılamadı, sil ve yeniden oluştur
-                    DeleteService(service);
-                    CloseServiceHandle(service);
-                    service = NULL;
                 }
             }
         }
@@ -152,15 +130,15 @@ static BOOL load_windivert_driver(void) {
             error = GetLastError();
             logfile = fopen("goodbyedpi_error.log", "a");
             if (logfile) {
-                fprintf(logfile, "CreateService başarısız oldu: %lu\n", error);
-                fprintf(logfile, "Sürücü yolu: %s\n", sys_path);
+                fprintf(logfile, "CreateService failed: %lu\n", error);
+                fprintf(logfile, "Driver path: %s\n", sys_path);
                 if (error == ERROR_SERVICE_EXISTS) {
-                    fprintf(logfile, "WinDivert servisi zaten var ancak açılamıyor.\n");
-                    fprintf(logfile, "Komut istemini yönetici olarak açın ve şu komutu çalıştırın:\n");
+                    fprintf(logfile, "WinDivert service already exists but cannot be opened.\n");
+                    fprintf(logfile, "Open command prompt as administrator and run the following command:\n");
                     fprintf(logfile, "sc delete WinDivert\n");
                 }
                 else if (error == ERROR_PATH_NOT_FOUND || error == ERROR_FILE_NOT_FOUND) {
-                    fprintf(logfile, "WinDivert32.sys dosyası bulunamadı.\n");
+                    fprintf(logfile, "WinDivert32.sys file not found.\n");
                 }
                 fclose(logfile);
             }
@@ -172,18 +150,18 @@ static BOOL load_windivert_driver(void) {
             error = GetLastError();
             logfile = fopen("goodbyedpi_error.log", "a");
             if (logfile) {
-                fprintf(logfile, "StartService başarısız oldu: %lu\n", error);
-                fprintf(logfile, "Sürücü yolu: %s\n", sys_path);
+                fprintf(logfile, "StartService failed: %lu\n", error);
+                fprintf(logfile, "Driver path: %s\n", sys_path);
                 if (error == ERROR_FILE_NOT_FOUND) {
-                    fprintf(logfile, "WinDivert32.sys dosyası bulunamadı\n");
+                    fprintf(logfile, "WinDivert32.sys file not found\n");
                 }
                 else if (error == ERROR_SERVICE_ALREADY_RUNNING) {
-                    fprintf(logfile, "WinDivert servisi zaten çalışıyor (bildirildi)\n");
+                    fprintf(logfile, "WinDivert service is already running (reported)\n");
                     success = TRUE;
                 }
                 else if (error == ERROR_INVALID_IMAGE_HASH) {
-                    fprintf(logfile, "Windows sürücü imza doğrulaması başarısız oldu.\n");
-                    fprintf(logfile, "Windows 10/11 için sürücü imza zorunluluğunu devre dışı bırakmalısınız.\n");
+                    fprintf(logfile, "Windows driver signature verification failed.\n");
+                    fprintf(logfile, "You must disable driver signature enforcement for Windows 10/11.\n");
                 }
                 fclose(logfile);
             }
@@ -197,7 +175,7 @@ static BOOL load_windivert_driver(void) {
         // Başarılı
         logfile = fopen("goodbyedpi_log.txt", "a");
         if (logfile) {
-            fprintf(logfile, "WinDivert servisi başarıyla oluşturuldu ve başlatıldı.\n");
+            fprintf(logfile, "WinDivert service successfully created and started.\n");
             fclose(logfile);
         }
         success = TRUE;
@@ -226,7 +204,7 @@ BOOL check_windivert_driver(void)
 
     logfile = fopen("goodbyedpi_log.txt", "a");
     if (logfile) {
-        fprintf(logfile, "Gelişmiş sürücü yükleme başarısız oldu, standart kontrol yapılıyor...\n");
+        fprintf(logfile, "Advanced driver loading failed, performing standard check...\n");
         fclose(logfile);
     }
 
@@ -235,7 +213,7 @@ BOOL check_windivert_driver(void)
     if (!scm) {
         logfile = fopen("goodbyedpi_error.log", "a");
         if (logfile) {
-            fprintf(logfile, "OpenSCManager başarısız oldu: %lu\n", GetLastError());
+            fprintf(logfile, "OpenSCManager failed: %lu\n", GetLastError());
             fclose(logfile);
         }
         return FALSE;
@@ -250,7 +228,7 @@ BOOL check_windivert_driver(void)
             if (!result) {
                 logfile = fopen("goodbyedpi_error.log", "a");
                 if (logfile) {
-                    fprintf(logfile, "WinDivert servisi çalışmıyor. Durum: %lu\n", status.dwCurrentState);
+                    fprintf(logfile, "WinDivert service is not running. Status: %lu\n", status.dwCurrentState);
                     fclose(logfile);
                 }
             }
@@ -261,7 +239,7 @@ BOOL check_windivert_driver(void)
         // Servis bulunamadı
         logfile = fopen("goodbyedpi_error.log", "a");
         if (logfile) {
-            fprintf(logfile, "WinDivert servisi bulunamadı\n");
+            fprintf(logfile, "WinDivert service not found\n");
             fclose(logfile);
         }
     }

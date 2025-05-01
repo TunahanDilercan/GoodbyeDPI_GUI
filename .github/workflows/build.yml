@@ -8,15 +8,54 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-32bit:
     runs-on: windows-latest
-    
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: 'recursive'
     
-    - name: Setup MSYS2
+    - name: Setup MSYS2 for 32-bit
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW32
+        update: true
+        install: >-
+          mingw-w64-i686-toolchain
+          mingw-w64-i686-binutils
+          make
+    
+    - name: Check workspace structure (32-bit)
+      shell: msys2 {0}
+      run: |
+        echo "Checking workspace structure for 32-bit build..."
+        ls -la
+        ls -la binary/x86/
+        ls -la include/
+        echo "Checking compiler availability..."
+        which gcc
+    
+    - name: Build 32-bit version
+      shell: msys2 {0}
+      run: |
+        cd src
+        make clean
+        make WINDIVERTHEADERS=../include WINDIVERTLIBS=../binary/x86 -j4
+    
+    - name: Upload 32-bit artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: GoodbyeDPI-x86
+        path: src/32_exe/
+
+  build-64bit:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+    
+    - name: Setup MSYS2 for 64-bit
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
@@ -24,37 +63,24 @@ jobs:
         install: >-
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-binutils
-          unzip
           make
     
-    - name: Check workspace structure
+    - name: Check workspace structure (64-bit)
       shell: msys2 {0}
       run: |
-        echo "Checking workspace structure..."
+        echo "Checking workspace structure for 64-bit build..."
         ls -la
-        ls -la binary/x86/
         ls -la binary/amd64/
         ls -la include/
-    
-    - name: Build 32-bit version
-      shell: msys2 {0}
-      run: |
-        cd src
-        make clean
-        make CPREFIX=i686-w64-mingw32- WINDIVERTHEADERS=../include WINDIVERTLIBS=../binary/x86 -j4
+        echo "Checking compiler availability..."
+        which gcc
     
     - name: Build 64-bit version
       shell: msys2 {0}
       run: |
         cd src
         make clean
-        make CPREFIX=x86_64-w64-mingw32- BIT64=1 WINDIVERTHEADERS=../include WINDIVERTLIBS=../binary/amd64 -j4
-    
-    - name: Upload 32-bit artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: GoodbyeDPI-x86
-        path: src/32_exe/
+        make BIT64=1 WINDIVERTHEADERS=../include WINDIVERTLIBS=../binary/amd64 -j4
     
     - name: Upload 64-bit artifact
       uses: actions/upload-artifact@v4

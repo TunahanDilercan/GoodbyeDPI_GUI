@@ -112,7 +112,7 @@ static void restart_as_admin(void);  // restart_as_admin() prototipi eklendi
 static BOOL install_windivert_driver(void); // install_windivert_driver() prototipi eklendi
 static void log_info(const char* format, ...);  // log_info() prototype added
 static void log_error(const char* format, ...);  // log_error() prototype added
-static BOOL is_goodbyedpi_running(void); // is_goodbyedpi_running() prototype added
+static BOOL check_goodbyedpi_process(void); // Function to check if GoodbyeDPI process is running
 
 // Helper function to identify Turkey options
 int is_turkey_option(const char *name) {
@@ -529,7 +529,7 @@ static void handle_stop(void) {
     Sleep(100);
     
     // Verify it's actually stopped by checking the running state
-    if (is_goodbyedpi_running()) {
+    if (check_goodbyedpi_process()) {
         log_error("GoodbyeDPI stop failed, force terminating");
         terminate_goodbyedpi();
     } else {
@@ -1081,7 +1081,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         Sleep(500); // Add immediate delay for process termination
                         
                         // Check if process is still running after immediate delay
-                        if (is_goodbyedpi_running()) {
+                        if (check_goodbyedpi_process()) {
                             log_info("Process still running after stop attempt, forcing termination");
                             terminate_goodbyedpi();
                             Sleep(500); // Additional delay after forced termination
@@ -1152,7 +1152,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 // Watchdog timer yönetimi
                 log_info("Watchdog timer fired, checking if the program is still running");
                 
-                if (is_running && !is_goodbyedpi_running()) {
+                if (is_running && !check_goodbyedpi_process()) {
                     // GoodbyeDPI çalışır görünüyor ancak aslında çalışmıyor
                     log_error("Watchdog detected: GoodbyeDPI is not running but flag is set");
                     is_running = 0;
@@ -1463,7 +1463,7 @@ static BOOL set_autostart(BOOL enable) {
 }
 
 // Function to check if GoodbyeDPI process is still running
-static BOOL is_goodbyedpi_running(void) {
+static BOOL check_goodbyedpi_process(void) {
     HANDLE hSnapshot;
     PROCESSENTRY32 pe32;
     BOOL found = FALSE;

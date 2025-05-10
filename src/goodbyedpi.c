@@ -28,6 +28,9 @@ static volatile int exiting = 0;
 static volatile int goodbyedpi_running = 0;
 static HANDLE       goodbyedpi_thread  = NULL;
 
+// WinDivert hata mesajları için global değişken
+static char last_error_msg[256] = {0};
+
 // WinDivert sürücüsünü yüklemek ve başlatmak için geliştirilmiş fonksiyon
 static BOOL load_windivert_driver(void) {
     BOOL success = FALSE;
@@ -1873,3 +1876,10 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
      // Cleanup is handled by dpi_thread or stop_goodbyedpi calling deinit_all
      return 0;
  }
+
+// get_goodbyedpi_error fonksiyonunu uygula
+const char* get_goodbyedpi_error(void) {
+    if (last_error_msg[0] == '\0')
+        return "No error";
+    return last_error_msg;
+}

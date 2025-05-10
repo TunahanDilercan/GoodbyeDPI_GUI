@@ -3,8 +3,10 @@ TARGET = goodbyedpi.exe
 
 ifeq ($(BIT64),1)
     # 64-bit için tanımlamalar
-    CFLAGS += -m64 -I../include
-    LDFLAGS += -m64 -fstack-protector -Wl,-O1,--sort-common,--as-needed -Wl,--disable-auto-image-base
+    CFLAGS += -m64 -I../include -std=c99 -pie -fPIE -pipe -O2 -D_FORTIFY_SOURCE=2 \
+              -Wall -Wextra -Wpedantic -Wformat=2 -Wformat-security -Wshadow
+    LDFLAGS += -m64 -fstack-protector -Wl,-O1,--sort-common,--as-needed -Wl,--disable-auto-image-base \
+               -Wl,--dynamicbase,--nxcompat -Wl,--high-entropy-va -Wl,--pic-executable,-e,mainCRTStartup
     CCPREFIX = x86_64-w64-mingw32-
     CPREFIX = x86_64-w64-mingw32-
     DIR = x86_64
@@ -15,8 +17,10 @@ ifeq ($(BIT64),1)
     DEST_DIR = 64_exe
 else
     # 32-bit için tanımlamalar
-    CFLAGS += -m32 -I../include
-    LDFLAGS += -m32 -fstack-protector -Wl,-O1,--sort-common,--as-needed -Wl,--disable-auto-image-base
+    CFLAGS += -m32 -I../include -std=c99 -pie -fPIE -pipe -O2 -D_FORTIFY_SOURCE=2 \
+              -Wall -Wextra -Wpedantic -Wformat=2 -Wformat-security -Wshadow
+    LDFLAGS += -m32 -fstack-protector -Wl,-O1,--sort-common,--as-needed -Wl,--disable-auto-image-base \
+               -Wl,--dynamicbase,--nxcompat -Wl,--pic-executable,-e,_mainCRTStartup
     CCPREFIX = i686-w64-mingw32-
     CPREFIX = i686-w64-mingw32-
     DIR = x86
@@ -30,8 +34,15 @@ endif
 # Derleyici ve bağlayıcı için önekler
 CC = $(CCPREFIX)gcc
 LD = $(CC)
-# Windres için daha uyumlu tanım - yerel ortamda windres komutunu kullan
-WINDRES = windres
+# Windres için daha uyumlu tanım
+WINDRES = $(CPREFIX)windres
+# If CPREFIX windres is not available, fall back to plain windres
+ifeq (, $(shell which $(CPREFIX)windres))
+	WINDRES = windres
+endif
+
+# Add libraries
+LIBS = -L$(WINDIVERT_DIR) -lWinDivert -lws2_32 -lole32 -lshell32 -luuid -lcomctl32 -luxtheme
 
 .PHONY: default all clean ensure_dir clean_logs
 
@@ -50,7 +61,7 @@ ensure_dir:
 	@mkdir -p $(DIR)
 	@mkdir -p $(DEST_DIR)
 
-# Log dosyalarını temizleyen hedef - Turkce karakter kullanmadan
+# Log dosyalarını temizleyen hedef
 clean_logs:
 	@echo "Cleaning log files for build..."
 	@echo "=== Log started - $(shell date '+%d-%m-%Y') ===" > $(DEST_DIR)/goodbyedpi_log.txt
@@ -66,8 +77,9 @@ goodbyedpi-rc.o: goodbyedpi-rc.rc icon.ico icon_running.ico icon_paused.ico
 
 $(TARGET): $(OBJECTS) $(RESOURCE_OBJ)
 	@mkdir -p $(DIR)
-	$(LD) $(OBJECTS) $(RESOURCE_OBJ) $(LDFLAGS) -mwindows -L$(WINDIVERT_DIR) -lWinDivert -lws2_32 -lole32 -lshell32 -luuid -lcomctl32 -luxtheme -s -o $(DEST_DIR)/$(TARGET)
+	$(LD) $(OBJECTS) $(RESOURCE_OBJ) $(LDFLAGS) -mwindows $(LIBS) -s -o $(DEST_DIR)/$(TARGET)
 	@echo "Executable built successfully at $(DEST_DIR)/$(TARGET)"
+	@echo "Build completed with flags: $(CFLAGS)"
 
 clean:
 	-rm -f *.o utils/*.o

@@ -1262,6 +1262,71 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // Try to load previously selected script index
     last_selected_idx = load_selected_script();
     
+    // GoodbyeDPI başlatma kodunda
+    int result = start_goodbyedpi(__argc, (char**)__argv);
+    if (result != GDPI_SUCCESS) {
+        // Hata yönetimi
+        const char* error_msg = get_goodbyedpi_error();
+        if (strstr(error_msg, "WinDivert kurulum hatası") != NULL) {
+            // WinDivert yükleme hatası için özel mesaj
+            MessageBox(hwnd, 
+                error_msg,
+                "WinDivert Sürücü Hatası", 
+                MB_ICONERROR);
+            
+            // Yönetici haklarıyla yeniden çalıştırma önerisi
+            if (strstr(error_msg, "yönetici olarak çalıştırıl") != NULL) {
+                // Yönetici olarak çalıştırma önerisi
+                if (MessageBox(hwnd, 
+                    "Program yönetici olarak çalıştırılmalıdır. Şimdi yönetici olarak yeniden başlatmak ister misiniz?",
+                    "Yönetici Hakları Gerekli", 
+                    MB_YESNO | MB_ICONQUESTION) == IDYES) {
+                        
+                    // Kendisini yönetici olarak yeniden başlat
+                    WCHAR path[MAX_PATH];
+                    GetModuleFileNameW(NULL, path, MAX_PATH);
+                    
+                    SHELLEXECUTEINFOW shExInfo = {0};
+                    shExInfo.cbSize = sizeof(SHELLEXECUTEINFOW);
+                    shExInfo.fMask = SEE_MASK_NOCLOSEPROCESS;
+                    shExInfo.hwnd = NULL;
+                    shExInfo.lpVerb = L"runas";  // Yönetici olarak
+                    shExInfo.lpFile = path;
+                    shExInfo.lpParameters = NULL;
+                    shExInfo.lpDirectory = NULL;
+                    shExInfo.nShow = SW_SHOWNORMAL;
+                    
+                    if (ShellExecuteExW(&shExInfo)) {
+                        // Başarılı başlatma, mevcut örneği kapat
+                        exit(0);
+                    }
+                }
+            }
+            // Secure Boot veya Driver Signature sorunları için bilgi mesajı
+            else if (strstr(error_msg, "Secure Boot") != NULL || 
+                     strstr(error_msg, "sürücü imzası") != NULL) {
+                MessageBox(hwnd, 
+                    "Windows sürücü koruma özellikleri nedeniyle WinDivert yüklenemiyor.\n\n"
+                    "Çözüm için şunları deneyebilirsiniz:\n"
+                    "1. Test Modunu etkinleştirin (bcdedit /set testsigning on)\n"
+                    "2. BIOS ayarlarından Secure Boot'u devre dışı bırakın\n"
+                    "3. Windows'u Güvenli Modda başlatıp programı çalıştırın",
+                    "Sürücü İmza Sorunu", 
+                    MB_ICONINFORMATION);
+            }
+            
+            return 1;  // Programı sonlandır
+        }
+        else {
+            // Diğer hatalar için standart hata mesajı
+            char error_buf[512];
+            snprintf(error_buf, sizeof(error_buf), 
+                     "GoodbyeDPI başlatılamadı. Hata:\n%s", error_msg);
+            MessageBox(hwnd, error_buf, "Hata", MB_ICONERROR);
+            return 1;  // Programı sonlandır
+        }
+    }
+    
     // Message loop
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0) > 0) {

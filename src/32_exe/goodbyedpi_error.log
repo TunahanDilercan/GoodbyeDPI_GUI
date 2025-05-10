@@ -1,1 +1,5 @@
-=== Error log started - May  2 2025 ===
+=== Error log started - 09-05-2025 ===
+StartService failed: 5
+[2025-05-09 19:50:57] Failed to install WinDivert driver
+StartService failed: 5
+[2025-05-09 19:51:10] Failed to install WinDivert driver

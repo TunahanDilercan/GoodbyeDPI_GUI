@@ -1,1 +1,70 @@
-=== Log started - 31-07-2025 ===
+=== Log started - Jul 31 2025 ===
+[scripts] Added script #0: Russia Blacklist DNS Redirect
+[scripts] Added script #1: Any Country DNS Redirect
+[scripts] Added script #2: Any Country Standard
+[scripts] Added script #3: [TR] DNS Redirect
+[scripts] Added script #4: [TR] Alternative 2
+[scripts] Added script #5: [TR] Alternative 3
+[scripts] Added script #6: [TR] Alternative 4
+[scripts] Added script #7: [TR] Alternative 5
+[scripts] Added script #8: [TR] Alternative 6
+[scripts] Added script #9: [TR] TTL 3 Only
+[GUI] WM_CREATE: Starting GUI initialization
+[GUI] WM_CREATE: Initialized scripts, count=10
+[GUI] WM_CREATE: Got scripts, scripts_size=10
+Loaded script index 6 from JSON config
+[GUI] WM_CREATE: Loaded selected script index=6
+[GUI] WM_CREATE: Set selected_script=6
+[GUI] WM_CREATE: Auto-start timer set for 3000 ms
+[scripts] Duplicate script detected: Russia Blacklist DNS Redirect (skipping)
+[scripts] Duplicate script detected: Any Country DNS Redirect (skipping)
+[scripts] Duplicate script detected: Any Country Standard (skipping)
+[scripts] Duplicate script detected: [TR] DNS Redirect (skipping)
+[scripts] Duplicate script detected: [TR] Alternative 2 (skipping)
+[scripts] Duplicate script detected: [TR] Alternative 3 (skipping)
+[scripts] Duplicate script detected: [TR] Alternative 4 (skipping)
+[scripts] Duplicate script detected: [TR] Alternative 5 (skipping)
+[scripts] Duplicate script detected: [TR] Alternative 6 (skipping)
+[scripts] Duplicate script detected: [TR] TTL 3 Only (skipping)
+Loaded script index 6 from JSON config
+[GUI] WM_TIMER: Auto-start timer fired
+[2025-07-31 20:47:52] Auto-start timer fired, starting the program automatically
+Checking administrator privileges...
+Administrator check result: YES
+Checking WinDivert.dll...
+WinDivert.dll found next to executable: D:\FilesHan\kod\GUI\last\GoodbyeDPI_GUI\src\64_exe\WinDivert.dll
+[script_stop] Stopping GoodbyeDPI...
+[stop_goodbyedpi] stop_goodbyedpi called, is_running=0, thread=0000000000000000
+[stop_goodbyedpi] Already stopped or stopping, nothing to do
+[script_stop] Stop completed, running status: 0
+[script_run] Running script: [TR] Alternative 4 with args: -5 --dns-addr 77.88.8.8 --dns-port 1253 --dnsv6-addr 2a02:6b8::feed:0ff --dnsv6-port 1253
+[script_run] Script [TR] Alternative 4 parsed: 10 arguments
+  argv[0]: 'goodbyedpi.exe'
+  argv[1]: '-5'
+  argv[2]: '--dns-addr'
+  argv[3]: '77.88.8.8'
+  argv[4]: '--dns-port'
+  argv[5]: '1253'
+  argv[6]: '--dnsv6-addr'
+  argv[7]: '2a02:6b8::feed:0ff'
+  argv[8]: '--dnsv6-port'
+  argv[9]: '1253'
+start_goodbyedpi called with 10 arguments:
+  argv[0]: goodbyedpi.exe
+  argv[1]: -5
+  argv[2]: --dns-addr
+  argv[3]: 77.88.8.8
+  argv[4]: --dns-port
+  argv[5]: 1253
+  argv[6]: --dnsv6-addr
+  argv[7]: 2a02:6b8::feed:0ff
+  argv[8]: --dnsv6-port
+  argv[9]: 1253
+Found WinDivert DLL: D:\FilesHan\kod\GUI\last\GoodbyeDPI_GUI\src\64_exe\WinDivert.dll
+Found WinDivert SYS: D:\FilesHan\kod\GUI\last\GoodbyeDPI_GUI\src\64_exe\WinDivert64.sys
+Creating thread for dpi_thread
+Thread created successfully
+[script_run] start_goodbyedpi result: 0 (success)
+dpi_thread started, checking arguments
+dpi_thread starting with 10 arguments
+Main packet filter created successfully with filter: (tcp and !impostor and !loopback and (tcp.PayloadLength ? tcp.PayloadLength < 1200 or tcp.Payload32[0] == 0x47455420 or tcp.Payload32[0] == 0x504F5354 or (tcp.Payload[0] == 0x16 and tcp.Payload[1] == 0x03 and tcp.Payload[2] <= 0x03): true) and ((inbound and ((((ipv6 or (ip.Id >= 0x0 and ip.Id <= 0xF) ) and tcp.SrcPort == 80 and tcp.Ack) or ((tcp.SrcPort == 80 or tcp.SrcPort == 443) and tcp.Ack and tcp.Syn)) and (((ip.SrcAddr < 127.0.0.1 or ip.SrcAddr > 127.255.255.255) and (ip.SrcAddr < 10.0.0.0 or ip.SrcAddr > 10.255.255.255) and (ip.SrcAddr < 192.168.0.0 or ip.SrcAddr > 192.168.255.255) and (ip.SrcAddr < 172.16.0.0 or ip.SrcAddr > 172.31.255.255) and (ip.SrcAddr < 169.254.0.0 or ip.SrcAddr > 169.254.255.255)) or ((ipv6.SrcAddr > ::1) and (ipv6.SrcAddr < 2001::0 or ipv6.SrcAddr > 2001:1::0) and (ipv6.SrcAddr < fc00::0 or ipv6.SrcAddr > fe00::0) and (ipv6.SrcAddr < fe80::0 or ipv6.SrcAddr > fec0::0) and (ipv6.SrcAddr < ff00::0 or ipv6.SrcAddr > ffff::0))))) or (outbound and (tcp.DstPort == 80 or tcp.DstPort == 443) and tcp.Ack and (((ip.DstAddr < 127.0.0.1 or ip.DstAddr > 127.255.255.255) and (ip.DstAddr < 10.0.0.0 or ip.DstAddr > 10.255.255.255) and (ip.DstAddr < 192.168.0.0 or ip.DstAddr > 192.168.255.255) and (ip.DstAddr < 172.16.0.0 or ip.DstAddr > 172.31.255.255) and (ip.DstAddr < 169.254.0.0 or ip.DstAddr > 169.254.255.255)) or ((ipv6.DstAddr > ::1) and (ipv6.DstAddr < 2001::0 or ipv6.DstAddr > 2001:1::0) and (ipv6.DstAddr < fc00::0 or ipv6.DstAddr > fe00::0) and (ipv6.DstAddr < fe80::0 or ipv6.DstAddr > fec0::0) and (ipv6.DstAddr < ff00::0 or ipv6.DstAddr > ffff::0))))))

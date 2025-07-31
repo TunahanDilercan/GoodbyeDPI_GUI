@@ -143,11 +143,31 @@ int script_run(int idx)
 {
     if (idx < 0 || idx >= scnt) return -1;
     
+    // Safety check - don't start if already running
+    if (is_goodbyedpi_running()) {
+        FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+        if (logfile) {
+            fprintf(logfile, "[%s] WARNING: Attempted to start script while another is running\n", __FUNCTION__);
+            fclose(logfile);
+        }
+        return -2;
+    }
+    
     // Ensure the current process is properly stopped first
     script_stop();
     
     // Wait a bit to ensure the process is completely stopped
     Sleep(300);
+    
+    // Double check it's really stopped
+    if (is_goodbyedpi_running()) {
+        FILE *logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "[%s] ERROR: Previous process still running after stop attempt\n", __FUNCTION__);
+            fclose(logfile);
+        }
+        return -3;
+    }
     
     // Allocate and initialize a clean argv array
     char *argv[MAX_ARGS] = {0};
@@ -212,27 +232,16 @@ void script_stop(void)
         fclose(logfile);
     }
     
-    // First attempt normal stop
+    // Only call stop once and trust it to handle timeout properly
     stop_goodbyedpi();
     
-    // Wait 300ms to ensure stop is complete
-    Sleep(300);
-    
-    // Check if still running
-    if (is_goodbyedpi_running()) {
-        logfile = fopen("goodbyedpi_log.txt", "a");
-        if (logfile) {
-            fprintf(logfile, "[%s] Normal stop failed, forcing termination...\n", __FUNCTION__);
-            fclose(logfile);
-        }
-        
-        // Force termination - Directly call stop_goodbyedpi again
-        stop_goodbyedpi();
-    }
+    // Give it a moment to complete
+    Sleep(500);
     
     logfile = fopen("goodbyedpi_log.txt", "a");
     if (logfile) {
-        fprintf(logfile, "[%s] GoodbyeDPI stopped successfully\n", __FUNCTION__);
+        fprintf(logfile, "[%s] Stop completed, running status: %d\n", 
+                __FUNCTION__, is_goodbyedpi_running());
         fclose(logfile);
     }
 }

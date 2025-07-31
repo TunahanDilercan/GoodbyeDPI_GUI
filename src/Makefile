@@ -38,8 +38,8 @@ WINDRES = windres
 default: ensure_dir clean_logs $(TARGET)
 all: default
 
-# Define source files excluding the resource file
-SOURCES = $(wildcard *.c utils/*.c)
+# Define source files excluding the resource file and goodbyedpi_simple.c
+SOURCES = $(filter-out goodbyedpi_simple.c, $(wildcard *.c utils/*.c))
 # Generate object files list from sources
 OBJECTS = $(patsubst %.c, %.o, $(SOURCES))
 # Add resource object file separately
@@ -66,8 +66,16 @@ goodbyedpi-rc.o: goodbyedpi-rc.rc icon.ico icon_running.ico icon_paused.ico
 
 $(TARGET): $(OBJECTS) $(RESOURCE_OBJ)
 	@mkdir -p $(DIR)
-	$(LD) $(OBJECTS) $(RESOURCE_OBJ) $(LDFLAGS) -mwindows -L$(WINDIVERT_DIR) -lWinDivert -lws2_32 -lole32 -lshell32 -luuid -lcomctl32 -luxtheme -s -o $(DEST_DIR)/$(TARGET)
-	@echo "Executable built successfully at $(DEST_DIR)/$(TARGET)"
+	$(LD) $(OBJECTS) $(RESOURCE_OBJ) $(LDFLAGS) -mwindows -L$(WINDIVERT_DIR) $(WINDIVERT_DIR)/WinDivert.lib -lws2_32 -lole32 -lshell32 -luuid -lcomctl32 -luxtheme -s -o $(DEST_DIR)/goodbyedpi_new.exe
+	@echo "Copying $(BIT64:1=64)$(BIT64:=32)-bit WinDivert files..."
+ifeq ($(BIT64),1)
+	@cp ../binary/amd64/WinDivert*.dll $(DEST_DIR)/ 2>/dev/null || true
+	@cp ../binary/amd64/WinDivert*.sys $(DEST_DIR)/ 2>/dev/null || true
+else
+	@cp ../binary/x86/WinDivert*.dll $(DEST_DIR)/ 2>/dev/null || true
+	@cp ../binary/x86/WinDivert*.sys $(DEST_DIR)/ 2>/dev/null || true
+endif
+	@echo "Executable built successfully at $(DEST_DIR)/goodbyedpi_new.exe"
 
 clean:
 	-rm -f *.o utils/*.o

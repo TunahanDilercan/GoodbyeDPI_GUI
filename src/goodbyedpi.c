@@ -23,229 +23,146 @@
 #include <windows.h>
 #include <process.h>
 
-// Flag to signal thread termination
-static volatile int exiting = 0;
-static volatile int goodbyedpi_running = 0;
+// Thread safety with atomic operations and proper synchronization
+static volatile LONG exiting = 0;                    // Use LONG for InterlockedExchange
+static volatile LONG goodbyedpi_running = 0;         // Use LONG for InterlockedExchange
 static HANDLE       goodbyedpi_thread  = NULL;
+static CRITICAL_SECTION thread_cs;                   // Critical section for thread operations
+static BOOL thread_cs_initialized = FALSE;
 
-// WinDivert sürücüsünü yüklemek ve başlatmak için geliştirilmiş fonksiyon
-static BOOL load_windivert_driver(void) {
-    BOOL success = FALSE;
-    SC_HANDLE scm = NULL, service = NULL;
-    SERVICE_STATUS status;
-    char sys_path[MAX_PATH] = {0};
-    char current_dir[MAX_PATH] = {0};
-    DWORD error = 0;
-    FILE *logfile = NULL;
-
-    // Geçerli dizini al
-    if (!GetCurrentDirectoryA(MAX_PATH, current_dir)) {
-        logfile = fopen("goodbyedpi_error.log", "a");
-        if (logfile) {
-            fprintf(logfile, "GetCurrentDirectory failed: %lu\n", GetLastError());
-            fclose(logfile);
-        }
-        goto cleanup;
+// Thread safety initialization
+static void init_thread_safety(void) {
+    if (!thread_cs_initialized) {
+        InitializeCriticalSection(&thread_cs);
+        thread_cs_initialized = TRUE;
     }
-
-    // Sürücü dosyası yolunu oluştur
-    snprintf(sys_path, MAX_PATH, "%s\\WinDivert32.sys", current_dir);
-    
-    // Sürücü dosyasının varlığını kontrol et
-    if (GetFileAttributesA(sys_path) == INVALID_FILE_ATTRIBUTES) {
-        // Eğer sürücü dosyası mevcut değilse, alternatif konumlar dene
-        snprintf(sys_path, MAX_PATH, "%s\\..\\binary\\x86\\WinDivert32.sys", current_dir);
-        if (GetFileAttributesA(sys_path) == INVALID_FILE_ATTRIBUTES) {
-            logfile = fopen("goodbyedpi_error.log", "a");
-            if (logfile) {
-                fprintf(logfile, "WinDivert32.sys file not found: %s\n", sys_path);
-                fclose(logfile);
-            }
-            goto cleanup;
-        }
-    }
-
-    // Service Control Manager'ı aç
-    scm = OpenSCManagerA(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-    if (!scm) {
-        error = GetLastError();
-        logfile = fopen("goodbyedpi_error.log", "a");
-        if (logfile) {
-            fprintf(logfile, "OpenSCManager failed: %lu\n", error);
-            fprintf(logfile, "This error usually means you don't have administrator rights.\n");
-            fprintf(logfile, "You must run the program AS ADMINISTRATOR!\n");
-            fclose(logfile);
-        }
-        goto cleanup;
-    }
-
-    // Servis zaten var mı diye kontrol et
-    service = OpenServiceA(scm, "WinDivert", SERVICE_ALL_ACCESS);
-    if (service) {
-        // Servis zaten var, durumunu kontrol et
-        if (QueryServiceStatus(service, &status)) {
-            if (status.dwCurrentState == SERVICE_RUNNING) {
-                // Servis zaten çalışıyor
-                logfile = fopen("goodbyedpi_log.txt", "a");
-                if (logfile) {
-                    fprintf(logfile, "WinDivert service is already running.\n");
-                    fclose(logfile);
-                }
-                success = TRUE;
-                goto cleanup;
-            }
-            else if (status.dwCurrentState == SERVICE_STOPPED) {
-                // Servis var ama durdurulmuş, başlatmaya çalış
-                if (StartServiceA(service, 0, NULL)) {
-                    success = TRUE;
-                }
-            }
-        }
-        else {
-            // Servis durumu alınamadı, sil ve yeniden oluştur
-            DeleteService(service);
-            CloseServiceHandle(service);
-            service = NULL;
-        }
-    }
-
-    // Servis yok veya başlatılamadıysa, yeni oluştur
-    if (!service) {
-        service = CreateServiceA(
-            scm,                    // SCM veritabanı
-            "WinDivert",            // Servis adı
-            "WinDivert Packet Diversion Driver", // Görünen adı
-            SERVICE_ALL_ACCESS,     // İstenen erişim
-            SERVICE_KERNEL_DRIVER,  // Servis tipi
-            SERVICE_DEMAND_START,   // Başlangıç tipi
-            SERVICE_ERROR_NORMAL,   // Hata kontrol tipi
-            sys_path,               // Servis için binary yolu
-            NULL,                   // Yük sıralaması yok
-            NULL,                   // Tag değeri yok
-            NULL,                   // Bağımlılıklar yok
-            NULL,                   // LocalSystem hesabı
-            NULL);                  // Şifre yok
-
-        if (!service) {
-            error = GetLastError();
-            logfile = fopen("goodbyedpi_error.log", "a");
-            if (logfile) {
-                fprintf(logfile, "CreateService failed: %lu\n", error);
-                fprintf(logfile, "Driver path: %s\n", sys_path);
-                if (error == ERROR_SERVICE_EXISTS) {
-                    fprintf(logfile, "WinDivert service already exists but cannot be opened.\n");
-                    fprintf(logfile, "Open command prompt as administrator and run the following command:\n");
-                    fprintf(logfile, "sc delete WinDivert\n");
-                }
-                else if (error == ERROR_PATH_NOT_FOUND || error == ERROR_FILE_NOT_FOUND) {
-                    fprintf(logfile, "WinDivert32.sys file not found.\n");
-                }
-                fclose(logfile);
-            }
-            goto cleanup;
-        }
-
-        // Yeni oluşturulan servisi başlat
-        if (!StartServiceA(service, 0, NULL)) {
-            error = GetLastError();
-            logfile = fopen("goodbyedpi_error.log", "a");
-            if (logfile) {
-                fprintf(logfile, "StartService failed: %lu\n", error);
-                fprintf(logfile, "Driver path: %s\n", sys_path);
-                if (error == ERROR_FILE_NOT_FOUND) {
-                    fprintf(logfile, "WinDivert32.sys file not found\n");
-                }
-                else if (error == ERROR_SERVICE_ALREADY_RUNNING) {
-                    fprintf(logfile, "WinDivert service is already running (reported)\n");
-                    success = TRUE;
-                }
-                else if (error == ERROR_INVALID_IMAGE_HASH) {
-                    fprintf(logfile, "Windows driver signature verification failed.\n");
-                    fprintf(logfile, "You must disable driver signature enforcement for Windows 10/11.\n");
-                }
-                fclose(logfile);
-            }
-            if (error != ERROR_SERVICE_ALREADY_RUNNING) {
-                // Sürücü başlatılamazsa servisi sil
-                DeleteService(service);
-                goto cleanup;
-            }
-        }
-        
-        // Başarılı
-        logfile = fopen("goodbyedpi_log.txt", "a");
-        if (logfile) {
-            fprintf(logfile, "WinDivert service successfully created and started.\n");
-            fclose(logfile);
-        }
-        success = TRUE;
-    }
-
-cleanup:
-    if (service) CloseServiceHandle(service);
-    if (scm) CloseServiceHandle(scm);
-
-    return success;
 }
 
-// WinDivert sürücüsünün durumunu kontrol eden fonksiyon
-BOOL check_windivert_driver(void)
-{
-    // Önce özel WinDivert sürücü yükleme fonksiyonunu dene
-    if (load_windivert_driver()) {
+// Thread safety cleanup
+static void cleanup_thread_safety(void) {
+    if (thread_cs_initialized) {
+        DeleteCriticalSection(&thread_cs);
+        thread_cs_initialized = FALSE;
+    }
+}
+
+// WinDivert servis kaydını temizle (çökme sonrası için)
+static void cleanup_windivert_service(void) {
+    SC_HANDLE scm = OpenSCManagerA(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+    if (!scm) return;
+    SC_HANDLE service = OpenServiceA(scm, "WinDivert", SERVICE_ALL_ACCESS);
+    if (service) {
+        DeleteService(service);
+        CloseServiceHandle(service);
+    }
+    CloseServiceHandle(scm);
+}
+
+// WinDivert dosyalarının yolunu dinamik olarak bul - SAFE VERSION
+static BOOL find_windivert_files(char *dll_path, char *sys_path, size_t path_size) {
+    char exe_dir[MAX_PATH] = {0};
+    char temp_path[MAX_PATH] = {0};
+    
+    // Executable'ın bulunduğu dizini al
+    if (!GetModuleFileNameA(NULL, exe_dir, MAX_PATH)) {
+        return FALSE;
+    }
+    
+    // Dizin yolunu çıkar (dosya adını kaldır)
+    char *last_slash = strrchr(exe_dir, '\\');
+    if (last_slash) {
+        *last_slash = '\0';
+    }
+    
+    // SAFE: Check buffer bounds before snprintf
+    if (path_size < strlen(exe_dir) + 20) {
+        return FALSE; // Not enough space
+    }
+    
+    // Önce aynı dizinde ara - SAFE
+    if (snprintf(temp_path, sizeof(temp_path), "%s\\WinDivert.dll", exe_dir) >= sizeof(temp_path)) {
+        return FALSE; // Path too long
+    }
+    
+    if (GetFileAttributesA(temp_path) != INVALID_FILE_ATTRIBUTES) {
+        // SAFE: strncpy with explicit null termination
+        strncpy(dll_path, temp_path, path_size - 1);
+        dll_path[path_size - 1] = '\0';
+        
+        // Check architecture and choose appropriate driver
+        #ifdef _WIN64
+        if (snprintf(sys_path, path_size, "%s\\WinDivert64.sys", exe_dir) >= path_size) {
+            return FALSE;
+        }
+        #else
+        if (snprintf(sys_path, path_size, "%s\\WinDivert32.sys", exe_dir) >= path_size) {
+            return FALSE;
+        }
+        #endif
         return TRUE;
     }
-
-    // Özel yükleme başarısız olursa, eski kontrol yöntemini dene
-    SC_HANDLE scm, service;
-    SERVICE_STATUS status;
-    BOOL result = FALSE;
-    FILE *logfile;
-
-    logfile = fopen("goodbyedpi_log.txt", "a");
-    if (logfile) {
-        fprintf(logfile, "Advanced driver loading failed, performing standard check...\n");
-        fclose(logfile);
+    
+    // ../binary/x86 dizininde ara (32-bit) - SAFE
+    if (snprintf(temp_path, sizeof(temp_path), "%s\\..\\binary\\x86\\WinDivert.dll", exe_dir) >= sizeof(temp_path)) {
+        return FALSE;
     }
+    
+    if (GetFileAttributesA(temp_path) != INVALID_FILE_ATTRIBUTES) {
+        strncpy(dll_path, temp_path, path_size - 1);
+        dll_path[path_size - 1] = '\0';
+        
+        if (snprintf(sys_path, path_size, "%s\\..\\binary\\x86\\WinDivert32.sys", exe_dir) >= path_size) {
+            return FALSE;
+        }
+        return TRUE;
+    }
+    
+    // ../binary/amd64 dizininde ara (64-bit) - SAFE
+    if (snprintf(temp_path, sizeof(temp_path), "%s\\..\\binary\\amd64\\WinDivert.dll", exe_dir) >= sizeof(temp_path)) {
+        return FALSE;
+    }
+    
+    if (GetFileAttributesA(temp_path) != INVALID_FILE_ATTRIBUTES) {
+        strncpy(dll_path, temp_path, path_size - 1);
+        dll_path[path_size - 1] = '\0';
+        
+        if (snprintf(sys_path, path_size, "%s\\..\\binary\\amd64\\WinDivert64.sys", exe_dir) >= path_size) {
+            return FALSE;
+        }
+        return TRUE;
+    }
+    
+    return FALSE;
+}
 
-    // SCM'e bağlan
-    scm = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
-    if (!scm) {
+// ORIJINAL GIBI: WinDivert'in kendi driver yönetimini kullan
+BOOL check_windivert_driver(void)
+{
+    char dll_path[MAX_PATH] = {0};
+    char sys_path[MAX_PATH] = {0};
+    FILE *logfile;
+    
+    // WinDivert dosyalarını bul
+    if (!find_windivert_files(dll_path, sys_path, MAX_PATH)) {
         logfile = fopen("goodbyedpi_error.log", "a");
         if (logfile) {
-            fprintf(logfile, "OpenSCManager failed: %lu\n", GetLastError());
+            fprintf(logfile, "WinDivert files not found in any expected location\n");
             fclose(logfile);
         }
         return FALSE;
     }
-
-    // WinDivert servisini bul
-    service = OpenServiceA(scm, "WinDivert", SERVICE_QUERY_STATUS);
-    if (service) {
-        if (QueryServiceStatus(service, &status)) {
-            result = (status.dwCurrentState == SERVICE_RUNNING);
-            
-            if (!result) {
-                logfile = fopen("goodbyedpi_error.log", "a");
-                if (logfile) {
-                    fprintf(logfile, "WinDivert service is not running. Status: %lu\n", status.dwCurrentState);
-                    fclose(logfile);
-                }
-            }
-        }
-        CloseServiceHandle(service);
+    
+    // Log dosyası yollarını kaydet
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "Found WinDivert DLL: %s\n", dll_path);
+        fprintf(logfile, "Found WinDivert SYS: %s\n", sys_path);
+        fclose(logfile);
     }
-    else {
-        // Servis bulunamadı
-        logfile = fopen("goodbyedpi_error.log", "a");
-        if (logfile) {
-            fprintf(logfile, "WinDivert service not found\n");
-            fclose(logfile);
-        }
-    }
-
-    CloseServiceHandle(scm);
-    return result;
+    
+    // WinDivert'in otomatik driver yönetimini kullan
+    // Manual service yönetimi yapmıyoruz!
+    return TRUE;
 }
 
 // Blacklist dosyasının varlığını kontrol eden fonksiyon
@@ -262,92 +179,218 @@ BOOL check_blacklist_file(const char *path)
 static unsigned __stdcall dpi_thread(void *arg)
 {
     char **argv = (char**)arg;
-    int argc = 0; while (argv[argc]) ++argc;
-    goodbyedpi_main(argc, argv); // BLOKLAYICI
-    // Ensure cleanup happens before thread truly exits
+    int argc = 0; 
+    FILE *logfile;
+    
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "dpi_thread started, checking arguments\n");
+        fclose(logfile);
+    }
+    
+    // SAFE: Check argv is not NULL before counting
+    if (!argv) {
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "CRITICAL: dpi_thread received NULL argv\n");
+            fclose(logfile);
+        }
+        InterlockedExchange(&goodbyedpi_running, 0); // SAFE: Use atomic operation
+        return -1;
+    }
+    
+    // Count arguments safely
+    while (argv[argc] && argc < 50) ++argc; // Limit to prevent infinite loop
+    
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "dpi_thread starting with %d arguments\n", argc);
+        fclose(logfile);
+    }
+    
+    // Validate argc
+    if (argc == 0) {
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "CRITICAL: dpi_thread received 0 arguments\n");
+            fclose(logfile);
+        }
+        InterlockedExchange(&goodbyedpi_running, 0); // SAFE: Use atomic operation
+        return -1;
+    }
+    
+    // Run main DPI function
+    goodbyedpi_main(argc, argv);
+    
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "goodbyedpi_main completed, cleaning up\n");
+        fclose(logfile);
+    }
+    
+    // Clean shutdown
     deinit_all();
-    goodbyedpi_running = 0;
-    // Free argv copy
-    for (int i = 0; i < argc; ++i) free(argv[i]);
-    free(argv);
+    
+    // Mark as not running BEFORE freeing memory - SAFE: Use atomic operation
+    InterlockedExchange(&goodbyedpi_running, 0);
+    
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "dpi_thread: Starting cleanup, argc=%d\n", argc);
+        fclose(logfile);
+    }
+    
+    // Free argv copy safely with null checks
+    if (argv) {
+        for (int i = 0; i < argc; ++i) {
+            if (argv[i]) {
+                logfile = fopen("goodbyedpi_log.txt", "a");
+                if (logfile) {
+                    fprintf(logfile, "dpi_thread: Freeing argv[%d]\n", i);
+                    fclose(logfile);
+                }
+                free(argv[i]);
+                argv[i] = NULL;
+            }
+        }
+        
+        logfile = fopen("goodbyedpi_log.txt", "a");
+        if (logfile) {
+            fprintf(logfile, "dpi_thread: Freeing argv array\n");
+            fclose(logfile);
+        }
+        free(argv);
+        argv = NULL;
+    }
+    
+    logfile = fopen("goodbyedpi_log.txt", "a");
+    if (logfile) {
+        fprintf(logfile, "dpi_thread exiting cleanly\n");
+        fclose(logfile);
+    }
+    
     return 0;
+}
+
+// BASIT: Sadece WinDivert'in çalışıp çalışmadığını kontrol et
+static int init_windivert(void) {
+    // WinDivert başlatma kontrolünü basitleştir - sadece driver varlığını kontrol et
+    return check_windivert_driver() ? 0 : -1;
 }
 
 int start_goodbyedpi(int argc, char **argv)
 {
-    if (goodbyedpi_running) {
+    FILE *logfile;
+    char **copy = NULL;
+    LONG was_running;
+    
+    // SAFE: Initialize thread safety
+    init_thread_safety();
+    
+    // SAFE: Enter critical section for thread operations
+    EnterCriticalSection(&thread_cs);
+    
+    // SAFE: Atomic check if already running
+    was_running = InterlockedCompareExchange(&goodbyedpi_running, 1, 0);
+    if (was_running) {
         // Already running
-        FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+        logfile = fopen("goodbyedpi_log.txt", "a");
         if (logfile) {
             fprintf(logfile, "start_goodbyedpi called but already running\n");
             fclose(logfile);
         }
+        LeaveCriticalSection(&thread_cs);
         return -1;
     }
     
     // Log arguments for debugging
-    FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+    logfile = fopen("goodbyedpi_log.txt", "a");
     if (logfile) {
         fprintf(logfile, "start_goodbyedpi called with %d arguments:\n", argc);
         for (int i = 0; i < argc; i++) {
-            fprintf(logfile, "  argv[%d]: %s\n", i, argv[i]);
+            fprintf(logfile, "  argv[%d]: %s\n", i, argv[i] ? argv[i] : "NULL");
         }
         fclose(logfile);
     }
     
-    // WinDivert sürücüsünün durumunu kontrol et
-    if (!check_windivert_driver()) {
+    // SAFE: Validate arguments
+    if (argc <= 0 || !argv) {
         logfile = fopen("goodbyedpi_error.log", "a");
         if (logfile) {
-            fprintf(logfile, "WinDivert driver failed to load. Check your installation.\n");
+            fprintf(logfile, "Invalid arguments: argc=%d, argv=%p\n", argc, argv);
             fclose(logfile);
         }
+        InterlockedExchange(&goodbyedpi_running, 0);
+        LeaveCriticalSection(&thread_cs);
+        return -1;
+    }
+    
+    // WinDivert'i orijinal yöntemle başlat
+    if (init_windivert() != 0) {
+        MessageBoxA(NULL, "WinDivert başlatılamadı! Lütfen:\n\n1. Programı yönetici olarak çalıştırın\n2. Test modunu etkinleştirin (enable_testmode.bat)", "Hata", MB_OK | MB_ICONERROR);
+        InterlockedExchange(&goodbyedpi_running, 0);
+        LeaveCriticalSection(&thread_cs);
         return -4;
     }
 
     // Blacklist dosyasını kontrol et
-    if (argc > 0 && strstr(argv[0], "russia-blacklist")) {
+    if (argc > 0 && argv[0] && strstr(argv[0], "russia-blacklist")) {
         if (!check_blacklist_file("..\\russia-blacklist.txt")) {
             logfile = fopen("goodbyedpi_error.log", "a");
             if (logfile) {
                 fprintf(logfile, "Blacklist file not found: ..\\russia-blacklist.txt\n");
                 fclose(logfile);
             }
+            InterlockedExchange(&goodbyedpi_running, 0);
+            LeaveCriticalSection(&thread_cs);
             return -5;
         }
     }
 
-    // Copy arguments to prevent issues with strtok in parse_args
-    char **copy = calloc(argc + 1, sizeof(char*));
+    // SAFE: Copy arguments with bounds checking
+    copy = calloc(argc + 1, sizeof(char*));
     if (!copy) {
         logfile = fopen("goodbyedpi_error.log", "a");
         if (logfile) {
             fprintf(logfile, "Failed to allocate memory for arguments\n");
             fclose(logfile);
         }
+        InterlockedExchange(&goodbyedpi_running, 0);
+        LeaveCriticalSection(&thread_cs);
         return -2;
     }
     
+    // Initialize all pointers to NULL for safety
+    for (int i = 0; i <= argc; ++i) {
+        copy[i] = NULL;
+    }
+    
     for (int i = 0; i < argc; ++i) {
-        copy[i] = _strdup(argv[i]);
-        if (!copy[i]) {
-            logfile = fopen("goodbyedpi_error.log", "a");
-            if (logfile) {
-                fprintf(logfile, "Failed to duplicate argument %d\n", i);
-                fclose(logfile);
+        if (argv[i]) {
+            copy[i] = _strdup(argv[i]);
+            if (!copy[i]) {
+                logfile = fopen("goodbyedpi_error.log", "a");
+                if (logfile) {
+                    fprintf(logfile, "Failed to duplicate argument %d: %s\n", i, argv[i]);
+                    fclose(logfile);
+                }
+                // Clean up previously allocated memory
+                for (int j = 0; j < i; ++j) {
+                    if (copy[j]) {
+                        free(copy[j]);
+                        copy[j] = NULL;
+                    }
+                }
+                free(copy);
+                InterlockedExchange(&goodbyedpi_running, 0);
+                LeaveCriticalSection(&thread_cs);
+                return -2;
             }
-            // Clean up previously allocated memory
-            for (int j = 0; j < i; ++j) {
-                free(copy[j]);
-            }
-            free(copy);
-            return -2;
         }
     }
     
-    // Reset exiting flag on start
-    exiting = 0;
-    goodbyedpi_running = 1;
+    // Reset exiting flag atomically
+    InterlockedExchange(&exiting, 0);
     
     // Create thread
     logfile = fopen("goodbyedpi_log.txt", "a");
@@ -358,17 +401,20 @@ int start_goodbyedpi(int argc, char **argv)
     
     goodbyedpi_thread = (HANDLE)_beginthreadex(NULL, 0, dpi_thread, copy, 0, NULL);
     if (!goodbyedpi_thread) {
-        goodbyedpi_running = 0;
+        InterlockedExchange(&goodbyedpi_running, 0);
         
         logfile = fopen("goodbyedpi_error.log", "a");
         if (logfile) {
-            fprintf(logfile, "Failed to create thread, error code: %d\n", GetLastError());
+            fprintf(logfile, "Failed to create thread, error code: %lu\n", GetLastError());
             fclose(logfile);
         }
         
         // Free copy if thread creation failed
-        for (int i = 0; i < argc; ++i) free(copy[i]);
+        for (int i = 0; i < argc; ++i) {
+            if (copy[i]) free(copy[i]);
+        }
         free(copy);
+        LeaveCriticalSection(&thread_cs);
         return -3;
     }
     
@@ -378,60 +424,88 @@ int start_goodbyedpi(int argc, char **argv)
         fclose(logfile);
     }
     
+    LeaveCriticalSection(&thread_cs);
     return 0;
 }
 
 void stop_goodbyedpi(void)
 {
     FILE *logfile;
+    HANDLE thread_handle = NULL;
+    LONG was_running;
+
+    // SAFE: Initialize critical section if needed
+    init_thread_safety();
+    
+    // SAFE: Enter critical section for thread operations
+    EnterCriticalSection(&thread_cs);
 
     logfile = fopen("goodbyedpi_log.txt", "a");
     if (logfile) {
-        fprintf(logfile, "[%s] stop_goodbyedpi called, is_running=%d, thread=%p\n", 
+        fprintf(logfile, "[%s] stop_goodbyedpi called, is_running=%ld, thread=%p\n", 
                 __FUNCTION__, goodbyedpi_running, goodbyedpi_thread);
         fclose(logfile);
     }
 
-    if (!goodbyedpi_running || !goodbyedpi_thread) {
+    // SAFE: Atomic check and set
+    was_running = InterlockedExchange(&goodbyedpi_running, 0);
+    if (!was_running || !goodbyedpi_thread) {
         logfile = fopen("goodbyedpi_log.txt", "a");
         if (logfile) {
-            fprintf(logfile, "[%s] Not running or no thread, returning\n", __FUNCTION__);
+            fprintf(logfile, "[%s] Already stopped or stopping, nothing to do\n", __FUNCTION__);
             fclose(logfile);
         }
+        InterlockedExchange(&exiting, 0);
+        LeaveCriticalSection(&thread_cs);
         return;
     }
 
-    // First signal the thread to exit
-    exiting = 1;
+    // SAFE: Signal thread to exit atomically
+    InterlockedExchange(&exiting, 1);
     
-    // First, call deinit_all() to close all WinDivert handles
-    // This should unblock any WinDivertRecv call
+    // Store thread handle to avoid race condition
+    thread_handle = goodbyedpi_thread;
+    goodbyedpi_thread = NULL; // Clear immediately to prevent double-stop
+
+    LeaveCriticalSection(&thread_cs);
+
+    // Close all WinDivert handles to unblock thread immediately
     deinit_all();
     
     logfile = fopen("goodbyedpi_log.txt", "a");
     if (logfile) {
-        fprintf(logfile, "[%s] Called deinit_all(), waiting for thread to exit\n", __FUNCTION__);
+        fprintf(logfile, "[%s] Signaled exit and closed handles, waiting for thread\n", __FUNCTION__);
         fclose(logfile);
     }
     
-    // Wait for thread with shorter timeout (1 second)
-    if (WaitForSingleObject(goodbyedpi_thread, 1000) == WAIT_TIMEOUT) {
-        // If thread doesn't exit within timeout, terminate it forcefully
+    // Wait for thread with timeout
+    DWORD wait_result = WaitForSingleObject(thread_handle, 3000); // 3 seconds
+    if (wait_result == WAIT_TIMEOUT) {
         logfile = fopen("goodbyedpi_log.txt", "a");
         if (logfile) {
-            fprintf(logfile, "[%s] Thread did not exit within timeout, terminating forcefully\n", __FUNCTION__);
+            fprintf(logfile, "[%s] Thread did not exit within 3 seconds, terminating forcefully\n", __FUNCTION__);
             fclose(logfile);
         }
         
-        TerminateThread(goodbyedpi_thread, 0);
+        // Force terminate
+        TerminateThread(thread_handle, 0);
+        Sleep(100); // Give OS time to cleanup
+    } else if (wait_result == WAIT_OBJECT_0) {
+        logfile = fopen("goodbyedpi_log.txt", "a");
+        if (logfile) {
+            fprintf(logfile, "[%s] Thread exited gracefully\n", __FUNCTION__);
+            fclose(logfile);
+        }
     }
     
-    CloseHandle(goodbyedpi_thread);
-    goodbyedpi_thread = NULL;
-    goodbyedpi_running = 0;
+    // Clean up thread handle
+    CloseHandle(thread_handle);
     
-    // Reset exiting flag after stopping
-    exiting = 0;
+    // Reset states atomically
+    InterlockedExchange(&exiting, 0);
+    
+    // Additional cleanup - ensure all handles are closed
+    deinit_all();
     
     logfile = fopen("goodbyedpi_log.txt", "a");
     if (logfile) {
@@ -445,7 +519,7 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
  // My mingw installation does not load inet_pton definition for some reason
  WINSOCK_API_LINKAGE INT WSAAPI inet_pton(INT Family, LPCSTR pStringBuf, PVOID pAddr);
  
- #define GOODBYEDPI_VERSION "v0.2.3rc3"
+ #define GOODBYEDPI_VERSION "v2.3.9-security-hardened"
  
  #define die() do { sleep(20); return EXIT_FAILURE; } while (0)
  
@@ -619,33 +693,75 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
  static char *filter_string = NULL;
  static char *filter_passive_string = NULL;
  
- static void add_filter_str(int proto, int port) {
-     const char *udp = " or (udp and !impostor and !loopback and " \
-                       "(udp.SrcPort == %d or udp.DstPort == %d))";
-     const char *tcp = " or (tcp and !impostor and !loopback " MAXPAYLOADSIZE_TEMPLATE " and " \
-                       "(tcp.SrcPort == %d or tcp.DstPort == %d))";
- 
-     char *current_filter = filter_string;
-     size_t new_filter_size = strlen(current_filter) +
-             (proto == IPPROTO_UDP ? strlen(udp) : strlen(tcp)) + 16;
-     char *new_filter = malloc(new_filter_size);
- 
-     strcpy(new_filter, current_filter);
-     if (proto == IPPROTO_UDP)
-         sprintf(new_filter + strlen(new_filter), udp, port, port);
-     else
-         sprintf(new_filter + strlen(new_filter), tcp, port, port);
- 
-     filter_string = new_filter;
-     free(current_filter);
- }
- 
- static void add_ip_id_str(int id) {
+static void add_filter_str(int proto, int port) {
+    const char *udp = " or (udp and !impostor and !loopback and " \
+                      "(udp.SrcPort == %d or udp.DstPort == %d))";
+    const char *tcp = " or (tcp and !impostor and !loopback " MAXPAYLOADSIZE_TEMPLATE " and " \
+                      "(tcp.SrcPort == %d or tcp.DstPort == %d))";
+
+    // SAFE: NULL check and bounds validation
+    if (!filter_string) {
+        // Initialize if first call
+        filter_string = strdup("");
+        if (!filter_string) return; // malloc failed
+    }
+    
+    char *current_filter = filter_string;
+    const char *template = (proto == IPPROTO_UDP) ? udp : tcp;
+    
+    // SAFE: Calculate exact size needed
+    size_t current_len = strlen(current_filter);
+    size_t template_len = strlen(template);
+    size_t new_filter_size = current_len + template_len + 32; // Extra space for port numbers
+    
+    char *new_filter = malloc(new_filter_size);
+    if (!new_filter) {
+        return; // malloc failed, keep old filter
+    }
+    
+    // SAFE: Use secure string operations
+    strncpy(new_filter, current_filter, new_filter_size - 1);
+    new_filter[new_filter_size - 1] = '\0';
+    
+    // SAFE: Use snprintf instead of sprintf
+    char port_str[64];
+    int written = snprintf(port_str, sizeof(port_str), template, port, port);
+    if (written > 0 && written < sizeof(port_str)) {
+        // SAFE: Check if we have space to concatenate
+        if (strlen(new_filter) + strlen(port_str) < new_filter_size - 1) {
+            strncat(new_filter, port_str, new_filter_size - strlen(new_filter) - 1);
+        }
+    }
+
+    filter_string = new_filter;
+    free(current_filter);
+} static void add_ip_id_str(int id) {
      char *newstr;
      const char *ipid = " or ip.Id == %d";
-     char *addfilter = malloc(strlen(ipid) + 16);
+     size_t buffer_size = strlen(ipid) + 16;
+     char *addfilter = malloc(buffer_size);
+     
+     // SAFE: Check allocation and use snprintf with bounds
+     if (!addfilter) {
+         FILE *logfile = fopen("goodbyedpi_error.log", "a");
+         if (logfile) {
+             fprintf(logfile, "Failed to allocate memory in add_ip_id_str\n");
+             fclose(logfile);
+         }
+         return;
+     }
  
-     sprintf(addfilter, ipid, id);
+     // SAFE: Use snprintf instead of sprintf for buffer safety
+     int result = snprintf(addfilter, buffer_size, ipid, id);
+     if (result < 0 || (size_t)result >= buffer_size) {
+         FILE *logfile = fopen("goodbyedpi_error.log", "a");
+         if (logfile) {
+             fprintf(logfile, "Buffer overflow prevented in add_ip_id_str\n");
+             fclose(logfile);
+         }
+         free(addfilter);
+         return;
+     }
  
      newstr = repl_str(filter_string, IPID_TEMPLATE, addfilter);
      free(filter_string);
@@ -654,6 +770,8 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
      newstr = repl_str(filter_passive_string, IPID_TEMPLATE, addfilter);
      free(filter_passive_string);
      filter_passive_string = newstr;
+     
+     free(addfilter);
  }
  
  static void add_maxpayloadsize_str(unsigned short maxpayload) {
@@ -663,13 +781,36 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
          "and (tcp.PayloadLength ? tcp.PayloadLength < %hu " \
            "or tcp.Payload32[0] == 0x47455420 or tcp.Payload32[0] == 0x504F5354 " \
            "or (tcp.Payload[0] == 0x16 and tcp.Payload[1] == 0x03 and tcp.Payload[2] <= 0x03): true)";
-     char *addfilter = malloc(strlen(maxpayloadsize_str) + 16);
+     size_t buffer_size = strlen(maxpayloadsize_str) + 16;
+     char *addfilter = malloc(buffer_size);
+     
+     // SAFE: Check allocation and use snprintf with bounds
+     if (!addfilter) {
+         FILE *logfile = fopen("goodbyedpi_error.log", "a");
+         if (logfile) {
+             fprintf(logfile, "Failed to allocate memory in add_maxpayloadsize_str\n");
+             fclose(logfile);
+         }
+         return;
+     }
  
-     sprintf(addfilter, maxpayloadsize_str, maxpayload);
+     // SAFE: Use snprintf instead of sprintf for buffer safety
+     int result = snprintf(addfilter, buffer_size, maxpayloadsize_str, maxpayload);
+     if (result < 0 || (size_t)result >= buffer_size) {
+         FILE *logfile = fopen("goodbyedpi_error.log", "a");
+         if (logfile) {
+             fprintf(logfile, "Buffer overflow prevented in add_maxpayloadsize_str\n");
+             fclose(logfile);
+         }
+         free(addfilter);
+         return;
+     }
  
      newstr = repl_str(filter_string, MAXPAYLOADSIZE_TEMPLATE, addfilter);
      free(filter_string);
      filter_string = newstr;
+     
+     free(addfilter);
  }
  
  static void finalize_filter_strings() {
@@ -730,9 +871,9 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
  static HANDLE init(char *filter, UINT64 flags) {
      LPTSTR errormessage = NULL;
      DWORD errorcode = 0;
-     filter = WinDivertOpen(filter, WINDIVERT_LAYER_NETWORK, 0, flags);
-     if (filter != INVALID_HANDLE_VALUE)
-         return filter;
+     HANDLE handle = WinDivertOpen(filter, WINDIVERT_LAYER_NETWORK, 0, flags); // SAFE: Use separate variable
+     if (handle != INVALID_HANDLE_VALUE)
+         return handle;
      errorcode = GetLastError();
      FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
                    FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -792,8 +933,9 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
  }
  
  static void sigint_handler(int sig __attribute__((unused))) {
-     exiting = 1;
+     InterlockedExchange(&exiting, 1); // SAFE: Use atomic operation
      deinit_all();
+     cleanup_windivert_service(); // --- YENİ: Çıkarken servisi sil ---
      exit(EXIT_SUCCESS);
  }
  
@@ -1100,7 +1242,7 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
          max_payload_size = 1200;
      }
  
-     while ((opt = getopt_long(argc, argv, "123456789pqrsaf:e:mwk:n", long_options, NULL)) != -1) {
+     while ((opt = getopt_long(argc, argv, "123456789pqrsaf:e:mwk,n", long_options, NULL)) != -1) {
          switch (opt) {
              case '1':
                  do_passivedpi = do_host = do_host_removespace \
@@ -1297,14 +1439,34 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
                  do_fake_packet = 1;
                  do_auto_ttl = 1;
  
-                 if (!optarg && argv[optind] && argv[optind][0] != '-')
+                 // SAFE: Bounds check before accessing argv[optind]
+                 if (!optarg && optind < argc && argv[optind] && argv[optind][0] != '-') {
                      optarg = argv[optind];
+                 }
  
                  if (optarg) {
+                     // SAFE: Check string length and validate input
+                     size_t optarg_len = strlen(optarg);
+                     if (optarg_len > 100) { // Reasonable limit for auto-ttl parameter
+                         puts("Auto TTL parameter too long!");
+                         return ERROR_AUTOTTL;
+                     }
+                     
                      char *autottl_copy = strdup(optarg);
+                     if (!autottl_copy) {
+                         puts("Memory allocation failed for Auto TTL parameter!");
+                         return ERROR_AUTOTTL;
+                     }
+                     
                      if (strchr(autottl_copy, '-')) {
                          char *autottl_current = strtok(autottl_copy, "-");
+                         if (!autottl_current) {
+                             puts("Set Auto TTL parameter error!");
+                             free(autottl_copy);
+                             return ERROR_AUTOTTL;
+                         }
                          auto_ttl_1 = atoub(autottl_current, "Set Auto TTL parameter error!");
+                         
                          autottl_current = strtok(NULL, "-");
                          if (!autottl_current) {
                              puts("Set Auto TTL parameter error!");
@@ -1312,6 +1474,7 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
                              return ERROR_AUTOTTL;
                          }
                          auto_ttl_2 = atoub(autottl_current, "Set Auto TTL parameter error!");
+                         
                          autottl_current = strtok(NULL, "-");
                          if (!autottl_current) {
                              puts("Set Auto TTL parameter error!");
@@ -1347,12 +1510,21 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
                  do_fragment_http_persistent_nowait = 1;
                  break;
              case '|': // --max-payload
-                 if (!optarg && argv[optind] && argv[optind][0] != '-')
+                 // SAFE: Bounds check before accessing argv[optind]
+                 if (!optarg && optind < argc && argv[optind] && argv[optind][0] != '-') {
                      optarg = argv[optind];
-                 if (optarg)
+                 }
+                 if (optarg) {
+                     // SAFE: Validate string length before processing
+                     size_t optarg_len = strlen(optarg);
+                     if (optarg_len > 10) { // Reasonable limit for numeric value
+                         puts("Max payload size parameter too long!");
+                         return ERROR_DEFAULT;
+                     }
                      max_payload_size = atousi(optarg, "Max payload size parameter error!");
-                 else
+                 } else {
                      max_payload_size = 1200;
+                 }
                  break;
              case 'u': // --fake-from-hex
                  if (fake_load_from_hex(optarg)) {
@@ -1564,6 +1736,32 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
      filters[filter_num] = init(filter_string, 0);
  
      w_filter = filters[filter_num];
+     
+     // SAFE: Check if main filter was created successfully
+     if (w_filter == NULL) {
+         printf("CRITICAL: Failed to initialize main packet filter!\n");
+         printf("Filter string: %s\n", filter_string ? filter_string : "NULL");
+         
+         // SAFE: Log critical error
+         FILE *logfile = fopen("goodbyedpi_error.log", "a");
+         if (logfile) {
+             fprintf(logfile, "CRITICAL: Main packet filter initialization failed\n");
+             fprintf(logfile, "Filter string: %s\n", filter_string ? filter_string : "NULL");
+             fclose(logfile);
+         }
+         
+         return EXIT_FAILURE;
+     } else {
+         // SAFE: Log successful filter creation
+         printf("Main packet filter created successfully\n");
+         FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+         if (logfile) {
+             fprintf(logfile, "Main packet filter created successfully with filter: %s\n", 
+                     filter_string ? filter_string : "NULL");
+             fclose(logfile);
+         }
+     }
+     
      filter_num++;
  
      for (i = 0; i < filter_num; i++) {
@@ -1578,8 +1776,8 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
      signal(SIGINT, sigint_handler);
  
      while (1) {
-         // Check for exit signal before blocking on WinDivertRecv
-         if (exiting) {
+         // Check for exit signal before blocking on WinDivertRecv - SAFE: Atomic read
+         if (InterlockedCompareExchange(&exiting, 0, 0)) {
              printf("Exiting gracefully...\n");
              break;
          }
@@ -1902,13 +2100,27 @@ int is_goodbyedpi_running(void) { return goodbyedpi_running; }
              }
          }
          else {
-             // Check if exiting is the reason for the error
-             if (exiting) {
+             // Check if exiting is the reason for the error - SAFE: Atomic read
+             if (InterlockedCompareExchange(&exiting, 0, 0)) {
                  printf("Exiting gracefully after WinDivertRecv signal...\n");
              } else {
                  // Report error only if not exiting
                  DWORD error_code = GetLastError();
                  printf("Error receiving packet: %lu\n", error_code);
+                 
+                 // SAFE: Log error to file for debugging
+                 FILE *logfile = fopen("goodbyedpi_error.log", "a");
+                 if (logfile) {
+                     fprintf(logfile, "WinDivertRecv failed with error: %lu\n", error_code);
+                     if (error_code == 995) {
+                         fprintf(logfile, "Error 995: Operation was aborted - probably filter closed\n");
+                     } else if (error_code == 6) {
+                         fprintf(logfile, "Error 6: Invalid handle - filter was not opened properly\n");
+                     } else if (error_code == 5) {
+                         fprintf(logfile, "Error 5: Access denied - not running as administrator\n");
+                     }
+                     fclose(logfile);
+                 }
              }
              break; // Exit loop on error or signal
          }

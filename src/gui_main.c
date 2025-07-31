@@ -118,7 +118,14 @@ static BOOL check_goodbyedpi_process(void); // Function to check if GoodbyeDPI p
 int is_turkey_option(const char *name) {
     return (strstr(name, "turkey") != NULL || 
             strstr(name, "Turkey") != NULL || 
-            strstr(name, "TURKEY") != NULL);
+            strstr(name, "TURKEY") != NULL ||
+            strstr(name, "[TR]") != NULL ||
+            strstr(name, "TR") != NULL ||
+            strstr(name, "Alternative 4") != NULL ||
+            strstr(name, "Alternative 2") != NULL ||
+            strstr(name, "Alternative 3") != NULL ||
+            strstr(name, "Alternative 5") != NULL ||
+            strstr(name, "Alternative 6") != NULL);
 }
 
 // Sanitize name - used for script names displayed in the menu
@@ -166,14 +173,17 @@ static int find_default_script(void) {
     return -1;
 }
 
-// Function to get the default script index (option 4 - Any Country with DNS Redirector)
+// Function to get the default script index (option 4 - Turkey Alternative 4)
 static int get_default_script_index(void) {
     int i;
     
-    // First look for "Any Country with DNS Redirector" (option 4)
+    // First look for Turkey Alternative 4 specifically
     for (i = 0; i < scripts_size; i++) {
-        if (scripts[i].name && strstr(scripts[i].name, DEFAULT_SCRIPT_NAME)) {
-            log_info("Found default script '%s' at index %d", DEFAULT_SCRIPT_NAME, i);
+        if (scripts[i].name && 
+            (strstr(scripts[i].name, "turkey_dnsredir_alternative4") ||
+             strstr(scripts[i].name, "Turkey Alternative 4") ||
+             strstr(scripts[i].name, "turkey alternative 4"))) {
+            log_info("Found Turkey Alternative 4 script at index %d: %s", i, scripts[i].name);
             return i;
         }
     }
@@ -429,9 +439,9 @@ static void handle_start(void) {
     if (!is_admin()) {
         log_error("Attempting to start without administrator privileges");
         show_balloon_notification("Error", 
-                               "Administrator permissions required", 
+                               "Administrator permissions required. Please run as administrator.", 
                                NIIF_ERROR);
-        restart_as_admin();
+        // restart_as_admin() çağrısı kaldırıldı - program çökmemesi için
         return;
     }
     log_info("Admin check passed");
@@ -969,6 +979,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             // Log başlat - debug amaçlı
             FILE *logfile = fopen("goodbyedpi_log.txt", "a");
             if (logfile) {
+                fprintf(logfile, "[GUI] WM_CREATE: Starting GUI initialization\n");
                 fprintf(logfile, "[GUI] WM_CREATE: Initialized scripts, count=%d\n", scripts_count());
                 fclose(logfile);
             }
@@ -1046,6 +1057,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             auto_start_pending = TRUE;
             SetTimer(hwnd, IDT_AUTO_START, AUTO_START_DELAY, NULL);
             
+            // Log timer setup
+            logfile = fopen("goodbyedpi_log.txt", "a");
+            if (logfile) {
+                fprintf(logfile, "[GUI] WM_CREATE: Auto-start timer set for %d ms\n", AUTO_START_DELAY);
+                fclose(logfile);
+            }
+            
             return 0;
             
         case WM_TRAY:
@@ -1058,50 +1076,83 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 if (LOWORD(wParam) >= ID_TRAY_SCRIPT_FIRST && 
                     LOWORD(wParam) < ID_TRAY_SCRIPT_FIRST + scripts_size) {
                     
-                    int script_idx = LOWORD(wParam) - ID_TRAY_SCRIPT_FIRST;
+                    int menu_idx = LOWORD(wParam) - ID_TRAY_SCRIPT_FIRST;
                     
-                    // Update check marks in menu
-                    if (last_selected_idx >= 0 && last_selected_idx < scripts_size) {
-                        CheckMenuItem(hPopupMenu, ID_TRAY_SCRIPT_FIRST + last_selected_idx, 
-                                    MF_BYCOMMAND | MF_UNCHECKED);
-                    }
+                    // Get the actual script index from menu item data
+                    MENUITEMINFO mii = {0};
+                    mii.cbSize = sizeof(MENUITEMINFO);
+                    mii.fMask = MIIM_DATA;
                     
-                    CheckMenuItem(hPopupMenu, LOWORD(wParam), MF_BYCOMMAND | MF_CHECKED);
-                    last_selected_idx = script_idx;
-                    selected_script = script_idx; // Set selected_script when selecting from menu
-                    save_selected_script(script_idx);
-                    
-                    // If already running, stop first
-                    if (is_running) {
-                        log_info("Script changed while running. Stopping current script and will restart with new script");
-                        handle_stop();
+                    if (GetMenuItemInfo(hPopupMenu, LOWORD(wParam), FALSE, &mii)) {
+                        int script_idx = (int)mii.dwItemData;
                         
-                        // Ensure the process has completely stopped before restarting
-                        // Increase the delay to allow clean shutdown
-                        Sleep(500); // Add immediate delay for process termination
-                        
-                        // Check if process is still running after immediate delay
-                        if (check_goodbyedpi_process()) {
-                            log_info("Process still running after stop attempt, forcing termination");
-                            terminate_goodbyedpi();
-                            Sleep(500); // Additional delay after forced termination
+                        // Validate script index
+                        if (script_idx >= 0 && script_idx < scripts_size) {
+                            log_info("Script selected: index=%d, name=%s", script_idx, 
+                                   scripts[script_idx].name ? scripts[script_idx].name : "NULL");
+                            
+                            // Update check marks in menu
+                            if (last_selected_idx >= 0 && last_selected_idx < scripts_size) {
+                                CheckMenuItem(hPopupMenu, ID_TRAY_SCRIPT_FIRST + last_selected_idx, 
+                                            MF_BYCOMMAND | MF_UNCHECKED);
+                            }
+                            
+                            CheckMenuItem(hPopupMenu, LOWORD(wParam), MF_BYCOMMAND | MF_CHECKED);
+                            last_selected_idx = script_idx;
+                            selected_script = script_idx;
+                            save_selected_script(script_idx);
+                            
+                            // If already running, stop first
+                            if (is_running) {
+                                log_info("Script changed while running. Stopping current script safely...");
+                                handle_stop();
+                                
+                                // Wait for complete shutdown
+                                Sleep(1000);
+                                
+                                // Verify shutdown
+                                if (check_goodbyedpi_process()) {
+                                    log_info("Process still running, forcing termination");
+                                    terminate_goodbyedpi();
+                                    Sleep(1000);
+                                }
+                                
+                                // Reset running state to be sure
+                                is_running = 0;
+                                update_tray_icon(g_hwnd);
+                                
+                                // Set script switch pending and start timer
+                                script_switch_pending = TRUE;
+                                SetTimer(hwnd, IDT_AUTO_START, AUTO_SCRIPT_SWITCH_DELAY + 1000, NULL);
+                                
+                                log_info("Script switch timer set for %d ms", AUTO_SCRIPT_SWITCH_DELAY + 1000);
+                            } 
+                            else {
+                                // Not running - start automatically when user selects a script
+                                log_info("Script selected while stopped, starting automatically");
+                                handle_start();
+                            }
+                        } else {
+                            log_error("Invalid script index selected: %d (max: %d)", script_idx, scripts_size);
                         }
-                        
-                        // Set the script_switch_pending flag and start timer for auto-restart with longer delay
-                        script_switch_pending = TRUE;
-                        SetTimer(hwnd, IDT_AUTO_START, AUTO_SCRIPT_SWITCH_DELAY + 500, NULL);
-                    } 
-                    else {
-                        // Not running - start automatically when user selects a script
-                        log_info("Script selected while paused, starting automatically");
-                        handle_start();
+                    } else {
+                        log_error("Failed to get menu item data for script selection");
                     }
                 } else {
                     switch (LOWORD(wParam)) {
+                        case ID_TRAY_START:
+                            handle_start();
+                            break;
+                            
+                        case ID_TRAY_STOP:
+                            handle_stop();
+                            break;
+                            
                         case ID_TRAY_EXIT:
                             DestroyWindow(hwnd);
                             break;
                             
+                        case ID_TRAY_AUTOSTART:
                             {
                                 BOOL current = get_autostart_enabled();
                                 set_autostart(!current);
@@ -1136,6 +1187,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (wParam == IDT_AUTO_START) {
                 // Auto-start timer yönetimi
                 KillTimer(hwnd, IDT_AUTO_START);
+                
+                FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+                if (logfile) {
+                    fprintf(logfile, "[GUI] WM_TIMER: Auto-start timer fired\n");
+                    fclose(logfile);
+                }
                 
                 if (auto_start_pending) {
                     auto_start_pending = FALSE;

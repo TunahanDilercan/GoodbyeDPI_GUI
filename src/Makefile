@@ -1,5 +1,5 @@
 # Executable target name
-TARGET = goodbyedpi.exe
+TARGET = goodbyedpi_new.exe
 
 ifeq ($(BIT64),1)
     # 64-bit için tanımlamalar
@@ -66,7 +66,11 @@ goodbyedpi-rc.o: goodbyedpi-rc.rc icon.ico icon_running.ico icon_paused.ico
 
 $(TARGET): $(OBJECTS) $(RESOURCE_OBJ)
 	@mkdir -p $(DIR)
+ifeq ($(BIT64),1)
+	$(LD) $(OBJECTS) $(RESOURCE_OBJ) $(LDFLAGS) -mwindows $(WINDIVERT_DIR)/WinDivert.lib -lws2_32 -lole32 -lshell32 -luuid -lcomctl32 -luxtheme -s -o $(DEST_DIR)/$(TARGET)
+else
 	$(LD) $(OBJECTS) $(RESOURCE_OBJ) $(LDFLAGS) -mwindows -L$(WINDIVERT_DIR) -lWinDivert -lws2_32 -lole32 -lshell32 -luuid -lcomctl32 -luxtheme -s -o $(DEST_DIR)/$(TARGET)
+endif
 	@echo "Executable built successfully at $(DEST_DIR)/$(TARGET)"
 
 clean:

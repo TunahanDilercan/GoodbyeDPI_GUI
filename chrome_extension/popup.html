@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 350px;
+      min-height: 400px;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .header {
+      padding: 20px;
+      text-align: center;
+      background: rgba(0,0,0,0.2);
+      backdrop-filter: blur(10px);
+    }
+    
+    .header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .header .subtitle {
+      font-size: 12px;
+      opacity: 0.8;
+      margin-top: 5px;
+    }
+    
+    .content {
+      padding: 20px;
+    }
+    
+    .status-section {
+      background: rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 15px;
+      backdrop-filter: blur(5px);
+    }
+    
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    
+    .status-text {
+      font-weight: 600;
+    }
+    
+    .toggle-btn {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      border-radius: 20px;
+      padding: 8px 16px;
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+    
+    .toggle-btn:hover {
+      background: rgba(255,255,255,0.3);
+      transform: translateY(-1px);
+    }
+    
+    .toggle-btn.active {
+      background: #4CAF50;
+    }
+    
+    .toggle-btn.inactive {
+      background: #F44336;
+    }
+    
+    .section {
+      margin-bottom: 20px;
+    }
+    
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      opacity: 0.9;
+    }
+    
+    .dropdown {
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.9);
+      color: #333;
+      font-size: 13px;
+    }
+    
+    .domain-list {
+      max-height: 120px;
+      overflow-y: auto;
+      background: rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 10px;
+    }
+    
+    .domain-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      font-size: 12px;
+    }
+    
+    .domain-item:last-child {
+      border-bottom: none;
+    }
+    
+    .remove-btn {
+      background: #F44336;
+      border: none;
+      border-radius: 3px;
+      color: white;
+      padding: 2px 6px;
+      font-size: 10px;
+      cursor: pointer;
+    }
+    
+    .input-group {
+      display: flex;
+      gap: 5px;
+      margin-top: 10px;
+    }
+    
+    .domain-input {
+      flex: 1;
+      padding: 6px 8px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    
+    .add-btn {
+      background: #4CAF50;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      padding: 6px 10px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    
+    .stats {
+      background: rgba(0,0,0,0.2);
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 11px;
+    }
+    
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+    
+    .test-section {
+      margin-top: 15px;
+    }
+    
+    .test-btn {
+      width: 100%;
+      background: rgba(255,255,255,0.2);
+      border: none;
+      border-radius: 6px;
+      color: white;
+      padding: 10px;
+      font-size: 12px;
+      cursor: pointer;
+      margin-bottom: 5px;
+    }
+    
+    .test-result {
+      font-size: 10px;
+      padding: 5px;
+      border-radius: 4px;
+      margin-top: 5px;
+      background: rgba(0,0,0,0.2);
+    }
+    
+    .scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
+    
+    .scrollbar::-webkit-scrollbar-track {
+      background: rgba(255,255,255,0.1);
+      border-radius: 2px;
+    }
+    
+    .scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.3);
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🛡️ DPI Bypass</h1>
+    <div class="subtitle">Discord & Site Access Extension</div>
+  </div>
+  
+  <div class="content">
+    <!-- Status Section -->
+    <div class="status-section">
+      <div class="status-indicator">
+        <span class="status-text" id="statusText">🟢 Aktif</span>
+        <button class="toggle-btn active" id="toggleBtn">Aktif</button>
+      </div>
+      <div style="font-size: 11px; opacity: 0.8;">
+        <span id="bypassCount">5</span> site korunuyor
+      </div>
+    </div>
+    
+    <!-- DNS Server Selection -->
+    <div class="section">
+      <div class="section-title">🌐 DNS-over-HTTPS Server</div>
+      <select class="dropdown" id="dohServer">
+        <option value="cloudflare">Cloudflare (1.1.1.1)</option>
+        <option value="google">Google (8.8.8.8)</option>
+        <option value="quad9">Quad9 (9.9.9.9)</option>
+        <option value="opendns">OpenDNS</option>
+      </select>
+    </div>
+    
+    <!-- Protected Domains -->
+    <div class="section">
+      <div class="section-title">🔒 Korumalı Siteler</div>
+      <div class="domain-list scrollbar" id="domainList">
+        <!-- Domains will be populated by JavaScript -->
+      </div>
+      <div class="input-group">
+        <input type="text" class="domain-input" id="domainInput" placeholder="örn: example.com">
+        <button class="add-btn" id="addDomainBtn">Ekle</button>
+      </div>
+    </div>
+    
+    <!-- Statistics -->
+    <div class="section">
+      <div class="section-title">📊 İstatistikler</div>
+      <div class="stats">
+        <div class="stat-item">
+          <span>Aktif Oturumlar:</span>
+          <span id="activeSessions">-</span>
+        </div>
+        <div class="stat-item">
+          <span>DNS Sorguları:</span>
+          <span id="dnsQueries">-</span>
+        </div>
+        <div class="stat-item">
+          <span>Bypass Oranı:</span>
+          <span id="bypassRate">-</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Test Section -->
+    <div class="test-section">
+      <button class="test-btn" id="testDiscord">🎮 Discord Bağlantısını Test Et</button>
+      <button class="test-btn" id="testDns">🔍 DNS Çözümlemeyi Test Et</button>
+      <div class="test-result" id="testResult" style="display: none;"></div>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

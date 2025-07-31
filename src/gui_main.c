@@ -52,11 +52,11 @@
 
 // Auto-start timer ID
 #define IDT_AUTO_START 2001
-#define AUTO_START_DELAY 3000 // 3 seconds delay before auto-starting
-#define AUTO_SCRIPT_SWITCH_DELAY 1000 // 1 second delay before auto-starting after script switch
+#define AUTO_START_DELAY 3000 // 3 seconds delay
+#define AUTO_SCRIPT_SWITCH_DELAY 5000 // 5 seconds delay
 
 // Default script name, will be selected automatically
-#define DEFAULT_SCRIPT_NAME "turkey_dnsredir_alternative4"
+#define DEFAULT_SCRIPT_NAME "[TR] Alternative 4"
 
 static NOTIFYICONDATA nid = {0};
 static HMENU hMenu;
@@ -104,7 +104,9 @@ static void show_status_dialog(HWND hwnd);
 static void show_about_dialog(HWND hwnd);
 static void terminate_goodbyedpi();
 static void save_selected_script(int index);
+static void save_selected_script_file(int index);
 static int load_selected_script();
+static int load_selected_script_file();
 static BOOL prompt_iteration_continue(HWND hwnd);
 static BOOL check_and_copy_windivert_dll(void);
 static BOOL is_admin(void);  // is_admin() prototipi eklendi
@@ -150,21 +152,28 @@ static int find_script_by_name(const char *name) {
 
 // Function to find a default script
 static int find_default_script(void) {
-    // First try to find "Any Country with DNS Redirector" as default (option 4)
+    // First try to find "[TR] Alternative 4" as the preferred default
     for (int i = 0; i < scripts_size; i++) {
-        if (scripts[i].name && strstr(scripts[i].name, "Any Country with DNS Redirector")) {
+        if (scripts[i].name && strstr(scripts[i].name, "[TR] Alternative 4")) {
             return i;
         }
     }
     
-    // If not found, try to find a Turkey script as default
+    // If not found, try to find any Turkey script as default
     for (int i = 0; i < scripts_size; i++) {
         if (is_turkey_option(scripts[i].name)) {
             return i;
         }
     }
     
-    // If no Turkey script is found, return first available script
+    // If no Turkey script is found, try "Any Country with DNS Redirector"
+    for (int i = 0; i < scripts_size; i++) {
+        if (scripts[i].name && strstr(scripts[i].name, "Any Country with DNS Redirector")) {
+            return i;
+        }
+    }
+    
+    // If no preferred script is found, return first available script
     if (scripts_size > 0) {
         return 0;
     }
@@ -427,96 +436,48 @@ static void update_tray_icon(HWND hwnd) {
 
 // Start the DPI bypass process
 static void handle_start(void) {
-    log_info("handle_start called, is_running=%d", is_running);
-    
     if (is_running) {
-        log_info("Already running, ignoring start request");
         return; // Already running
     }
     
-    // Admin kontrolü yap
-    log_info("Checking admin privileges");
+    // Basic admin check
     if (!is_admin()) {
-        log_error("Attempting to start without administrator privileges");
         show_balloon_notification("Error", 
                                "Administrator permissions required. Please run as administrator.", 
                                NIIF_ERROR);
         // restart_as_admin() çağrısı kaldırıldı - program çökmemesi için
         return;
     }
-    log_info("Admin check passed");
     
-    // WinDivert.dll kontrolü yap
-    log_info("Checking WinDivert.dll");
+    // Basic WinDivert check
     if (!check_and_copy_windivert_dll()) {
-        log_error("WinDivert.dll could not be found or copied");
         show_balloon_notification("Error", 
                                "WinDivert.dll not found", 
                                NIIF_ERROR);
         return;
     }
-    log_info("WinDivert.dll check passed");
     
-    // WinDivert sürücüsünü yükle
-    log_info("Installing WinDivert driver");
-    if (!install_windivert_driver()) {
-        log_error("Failed to install WinDivert driver");
-        show_balloon_notification("Error", 
-                               "WinDivert driver could not be installed", 
-                               NIIF_ERROR);
-        return;
-    }
-    log_info("WinDivert driver installed successfully");
-    
-    // Check script selection - use default if no script is selected
-    log_info("Checking script selection (selected_script=%d, scripts_size=%d)", selected_script, scripts_size);
+    // Use default script if none selected
     if (selected_script < 0 || selected_script >= scripts_size) {
-        log_info("No valid script selected, trying to get default script");
         selected_script = get_default_script_index();
-        if (selected_script >= 0) {
-            last_selected_idx = selected_script;
-            save_selected_script(selected_script);
-            log_info("Using default script: %s (index=%d)", scripts[selected_script].name, selected_script);
-        } else {
-            log_error("No valid script found, cannot start");
+        if (selected_script < 0) {
             show_balloon_notification("Error", 
                                   "No valid configuration found", 
                                   NIIF_ERROR);
             return;
         }
-    } else {
-        log_info("Using script: %s (index=%d)", scripts[selected_script].name, selected_script);
     }
     
-    // Set running flag first, to avoid race conditions
-    log_info("Starting operation: %s", scripts[selected_script].name);
-    
-    // Start the selected script
+    // Start the script - simple approach
     int result = script_run(selected_script);
-    log_info("script_run returned %d", result);
     
     if (result == 0) {
-        // Only set is_running after successful start
         is_running = 1;
         start_time = GetTickCount();
-        log_info("Script started successfully, is_running=1");
-        
-        // Update UI state
         update_tray_icon(g_hwnd);
-        
-        if (hPopupMenu) {
-            // Disable start button, enable stop button
-            EnableMenuItem(hPopupMenu, ID_TRAY_START, MF_GRAYED);
-            EnableMenuItem(hPopupMenu, ID_TRAY_STOP, MF_ENABLED);
-        }
-        
-        // Sadece simge değiştiğini bildirim olarak göster, ayrı bir bildirim gösterme
-        // show_balloon_notification("GoodbyeDPI Started", 
-        //                        "DPI circumvention is now active", 
-        //                        NIIF_INFO);
+        save_selected_script(selected_script);
     }
     else {
-        log_error("Failed to start script: %s, error code: %d", scripts[selected_script].name, result);
         show_balloon_notification("Error", 
                                 "Program could not be started", 
                                 NIIF_ERROR);
@@ -525,44 +486,19 @@ static void handle_start(void) {
 
 // Stop the DPI bypass process
 static void handle_stop(void) {
-    log_info("handle_stop called, is_running=%d", is_running);
-    
     if (!is_running) {
-        log_info("Already stopped, ignoring stop request");
         return; // Already stopped
     }
 
-    log_info("GoodbyeDPI will be stopped");
+    // Simple stop - let script_stop handle everything
     script_stop();
     
-    // Wait a bit to ensure the script_stop completed
-    Sleep(100);
+    // Brief wait for cleanup
+    Sleep(1000);
     
-    // Verify it's actually stopped by checking the running state
-    if (check_goodbyedpi_process()) {
-        log_error("GoodbyeDPI stop failed, force terminating");
-        terminate_goodbyedpi();
-    } else {
-        log_info("GoodbyeDPI stopped successfully");
-    }
-
-    // Update UI state
+    // Update state
     is_running = 0;
     update_tray_icon(g_hwnd);
-
-    // Also update menu state if we have the popup menu
-    if (hPopupMenu) {
-        // Enable start button, disable stop button
-        EnableMenuItem(hPopupMenu, ID_TRAY_START, MF_ENABLED);
-        EnableMenuItem(hPopupMenu, ID_TRAY_STOP, MF_GRAYED);
-    }
-    
-    // Sadece simge değiştiğini bildirim olarak göster, ayrı bir bildirim gösterme
-    // show_balloon_notification("GoodbyeDPI Stopped", 
-    //                         "DPI circumvention is now inactive", 
-    //                         NIIF_INFO);
-    
-    log_info("handle_stop completed, is_running=0");
 }
 
 // Function to get the directory of the executable
@@ -581,8 +517,60 @@ static void get_config_path(char *path, size_t size) {
     _snprintf(path, size, "%s\\last_selected.dat", exePath);
 }
 
-// Save selected script to file
+// Save selected script to JSON config file (portable and safe)
 static void save_selected_script(int index) {
+    char configPath[MAX_PATH] = {0};
+    char tempPath[MAX_PATH] = {0};
+    FILE *logfile, *f;
+    
+    get_config_path(configPath, MAX_PATH);
+    
+    // Change extension to .json
+    char *dot = strrchr(configPath, '.');
+    if (dot) strcpy(dot, ".json");
+    else strcat(configPath, ".json");
+    
+    snprintf(tempPath, MAX_PATH, "%s.tmp", configPath);
+    
+    // Write JSON to temporary file first
+    f = fopen(tempPath, "w");
+    if (f) {
+        fprintf(f, "{\n");
+        fprintf(f, "  \"selectedScript\": %d,\n", index);
+        fprintf(f, "  \"version\": \"1.0\",\n");
+        fprintf(f, "  \"lastUpdated\": \"%ld\"\n", time(NULL));
+        fprintf(f, "}\n");
+        fclose(f);
+        
+        // Atomic rename - replace original with temp file
+        if (rename(tempPath, configPath) != 0) {
+            logfile = fopen("goodbyedpi_error.log", "a");
+            if (logfile) {
+                fprintf(logfile, "Failed to rename JSON config file from %s to %s\n", tempPath, configPath);
+                fclose(logfile);
+            }
+            remove(tempPath); // Clean up temp file on failure
+        } else {
+            logfile = fopen("goodbyedpi_log.txt", "a");
+            if (logfile) {
+                fprintf(logfile, "Saved script index %d to JSON config: %s\n", index, configPath);
+                fclose(logfile);
+            }
+        }
+    } else {
+        logfile = fopen("goodbyedpi_error.log", "a");
+        if (logfile) {
+            fprintf(logfile, "Failed to open JSON config file for writing: %s\n", tempPath);
+            fclose(logfile);
+        }
+        
+        // Fallback to simple binary file if JSON fails
+        save_selected_script_file(index);
+    }
+}
+
+// Fallback file save method
+static void save_selected_script_file(int index) {
     char configPath[MAX_PATH] = {0};
     get_config_path(configPath, MAX_PATH);
     
@@ -593,23 +581,97 @@ static void save_selected_script(int index) {
     }
 }
 
-// Load selected script from file
+// Load selected script from JSON config file (fallback to binary file)
 static int load_selected_script() {
     char configPath[MAX_PATH] = {0};
+    FILE *logfile, *f;
+    int idx = -1;
+    char line[256];
+    
     get_config_path(configPath, MAX_PATH);
     
-    int idx = -1;
-    FILE *f = fopen(configPath, "rb");
+    // Change extension to .json
+    char *dot = strrchr(configPath, '.');
+    if (dot) strcpy(dot, ".json");
+    else strcat(configPath, ".json");
+    
+    // Try to read JSON file
+    f = fopen(configPath, "r");
     if (f) {
-        fread(&idx, sizeof(int), 1, f);
+        // Simple JSON parsing - look for "selectedScript": number
+        while (fgets(line, sizeof(line), f)) {
+            char *script_pos = strstr(line, "\"selectedScript\":");
+            if (script_pos) {
+                script_pos += strlen("\"selectedScript\":");
+                // Skip whitespace and colon
+                while (*script_pos && (*script_pos == ' ' || *script_pos == '\t' || *script_pos == ':')) {
+                    script_pos++;
+                }
+                idx = atoi(script_pos);
+                break;
+            }
+        }
         fclose(f);
         
         // Verify the index is valid
+        if (idx >= 0 && idx < scripts_count()) {
+            logfile = fopen("goodbyedpi_log.txt", "a");
+            if (logfile) {
+                fprintf(logfile, "Loaded script index %d from JSON config\n", idx);
+                fclose(logfile);
+            }
+            return idx;
+        } else if (idx != -1) {
+            logfile = fopen("goodbyedpi_log.txt", "a");
+            if (logfile) {
+                fprintf(logfile, "Invalid script index %d from JSON config, using default\n", idx);
+                fclose(logfile);
+            }
+        }
+    }
+    
+    // Fallback to binary file method
+    return load_selected_script_file();
+}
+
+// Fallback file load method  
+static int load_selected_script_file() {
+    char configPath[MAX_PATH] = {0};
+    FILE *logfile;
+    int idx = -1;
+    
+    get_config_path(configPath, MAX_PATH);
+    
+    FILE *f = fopen(configPath, "rb");
+    if (f) {
+        size_t read_count = fread(&idx, sizeof(int), 1, f);
+        fclose(f);
+        
+        if (read_count != 1) {
+            logfile = fopen("goodbyedpi_error.log", "a");
+            if (logfile) {
+                fprintf(logfile, "Failed to read config file properly: %s\n", configPath);
+                fclose(logfile);
+            }
+            idx = -1; // Reset to invalid
+        }
+        
+        // Verify the index is valid
         if (idx < 0 || idx >= scripts_count()) {
+            logfile = fopen("goodbyedpi_log.txt", "a");
+            if (logfile) {
+                fprintf(logfile, "Invalid script index %d from config file, using default\n", idx);
+                fclose(logfile);
+            }
             idx = find_default_script();
         }
     } else {
         // Set a default script if no saved selection
+        logfile = fopen("goodbyedpi_log.txt", "a");
+        if (logfile) {
+            fprintf(logfile, "Config file not found: %s, using default script\n", configPath);
+            fclose(logfile);
+        }
         idx = find_default_script();
     }
     
@@ -1202,7 +1264,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 else if (script_switch_pending) {
                     script_switch_pending = FALSE;
                     log_info("Script switch timer fired, starting the program with new script");
-                    handle_start();
+                    
+                    // Extra safety check - ensure we're not already running
+                    if (!is_running && !check_goodbyedpi_process()) {
+                        handle_start();
+                    } else {
+                        log_error("Script switch timer fired but process is still running - aborting restart");
+                        // Re-enable menu items if restart fails
+                        if (hPopupMenu) {
+                            for (int i = 0; i < scripts_size; i++) {
+                                EnableMenuItem(hPopupMenu, ID_TRAY_SCRIPT_FIRST + i, MF_ENABLED);
+                            }
+                            EnableMenuItem(hPopupMenu, ID_TRAY_START, MF_ENABLED);
+                            EnableMenuItem(hPopupMenu, ID_TRAY_STOP, MF_GRAYED);
+                        }
+                    }
                 }
             }
             else if (wParam == IDT_WATCHDOG) {
@@ -1332,6 +1408,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // Try to load previously selected script index
     last_selected_idx = load_selected_script();
     
+    // Auto-enable startup on first run if not already set
+    if (!get_autostart_enabled()) {
+        set_autostart(TRUE);
+        
+        // Log this action
+        FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+        if (logfile) {
+            fprintf(logfile, "Auto-enabled 'Run at startup' on first run\n");
+            fclose(logfile);
+        }
+    }
+    
     // Message loop
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0) > 0) {
@@ -1347,11 +1435,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 // Implementation of auxiliary functions
 static void terminate_goodbyedpi() {
-    // First try to stop via script_stop
-    log_info("Terminating GoodbyeDPI process");
-    script_stop();
+    log_info("Force terminating GoodbyeDPI processes");
     
-    // If that doesn't work, force kill the process
+    // Don't call script_stop again - it was already called
+    // Just force kill any remaining processes
+    
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnapshot != INVALID_HANDLE_VALUE) {
         PROCESSENTRY32 pe32 = {0};
@@ -1412,10 +1500,11 @@ static void show_status_dialog(HWND hwnd) {
 static void show_about_dialog(HWND hwnd) {
     MessageBox(hwnd, 
                "GoodbyeDPI GUI\n"
-               "Version 2.1\n\n"
+               "Version 2.3.14 - Working WinDivert Link\n\n"
                "GitHub/TunahanDilercan\n\n"
                "GitHub/ValdikSS/GoodbyeDPI\n\n"
-               "DPI circumvention utility",
+               "DPI circumvention utility\n\n"
+               "Fixed WinDivert library linking for DPI bypass",
                "About GoodbyeDPI", MB_ICONINFORMATION | MB_OK);
 }
 
@@ -1462,23 +1551,42 @@ static void show_balloon_notification(const char* title, const char* message, DW
 static BOOL get_autostart_enabled(void) {
     HKEY hKey;
     LONG result;
-    char exePath[MAX_PATH] = {0};
-    DWORD type, size = sizeof(exePath);
+    char registryPath[MAX_PATH] = {0};
+    char currentPath[MAX_PATH] = {0};
+    DWORD type, size = sizeof(registryPath);
     BOOL enabled = FALSE;
+    
+    // Get current executable path
+    GetModuleFileName(NULL, currentPath, MAX_PATH);
     
     // Check if registry key exists
     result = RegOpenKeyEx(HKEY_CURRENT_USER, 
                            "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 
-                           0, KEY_READ, &hKey);
+                           0, KEY_READ | KEY_WRITE, &hKey);
     
     if (result == ERROR_SUCCESS) {
         // Try to get the value
         result = RegQueryValueEx(hKey, "GoodbyeDPI", NULL, &type, 
-                                (BYTE*)exePath, &size);
+                                (BYTE*)registryPath, &size);
         
-        // If value exists and is a string, app is set to autostart
+        // If value exists and is a string
         if (result == ERROR_SUCCESS && type == REG_SZ) {
             enabled = TRUE;
+            
+            // Check if the registered path is different from current path
+            if (strcmp(registryPath, currentPath) != 0) {
+                // Update registry with current path
+                result = RegSetValueEx(hKey, "GoodbyeDPI", 0, REG_SZ, 
+                                      (BYTE*)currentPath, strlen(currentPath) + 1);
+                
+                // Log the path update
+                FILE *logfile = fopen("goodbyedpi_log.txt", "a");
+                if (logfile) {
+                    fprintf(logfile, "Updated autostart path from '%s' to '%s'\n", 
+                            registryPath, currentPath);
+                    fclose(logfile);
+                }
+            }
         }
         
         RegCloseKey(hKey);

@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "dnsredir.h": "c"
+        "dnsredir.h": "c",
+        "process.h": "c"
     }
 }

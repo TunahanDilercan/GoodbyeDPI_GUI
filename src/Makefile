@@ -1,5 +1,5 @@
 # Executable target name
-TARGET = goodbyedpi_new.exe
+TARGET = goodbyedpi_fixed.exe
 
 ifeq ($(BIT64),1)
     # 64-bit için tanımlamalar

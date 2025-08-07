@@ -6,7 +6,8 @@ Bu yazılım, çalışan GoodbyeDPI'ın görsel arayüzle (GUI) kolaylaştırıl
 
 Proje, orijinal DPI bypass motoru ile birlikte tek seferde derlenmiş olup, betiklerle uyumlu biçimde doğrudan çalışır.
 
-![Uygulama Gösterimi](GUI.gif)
+<img src="GUI.gif" width="800" alt="Uygulama Gösterimi"/>
+
 
 ---
 

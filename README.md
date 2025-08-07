@@ -6,13 +6,13 @@
   </a>
 </p>
 
-<img src="GUI.gif" width="800" alt="Uygulama Gösterimi"/>
-
 Bu yazılım, çalışan GoodbyeDPI'ın görsel arayüzle (GUI) kolaylaştırılmış halidir.
 
 [GoodbyeDPI](https://github.com/ValdikSS/GoodbyeDPI) ve [GoodbyeDPI-Turkey](https://github.com/cagritaskn/GoodbyeDPI-Turkey) projelerine dayanır. Derin Paket İnceleme (DPI) engellerini aşmayı hedefleyen bu araç, sistem tepsisinden kontrol edilebilen sade bir arayüzle sunulmuştur.
 
 Proje, orijinal DPI bypass motoru ile birlikte tek seferde derlenmiş olup, betiklerle uyumlu biçimde doğrudan çalışır.
+<img src="GUI.gif" width="800" alt="Uygulama Gösterimi"/>
+
 
 
 

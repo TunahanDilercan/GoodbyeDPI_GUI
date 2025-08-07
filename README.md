@@ -6,9 +6,6 @@
   </a>
 </p>
 
-> **This document is in Turkish. [Click here for English version](README.en.md)**  
-> **Bu belge Türkçedir. [İngilizce sürüm için tıklayın](README.en.md)**
-
 <img src="GUI.gif" width="800" alt="Uygulama Gösterimi"/>
 
 Bu yazılım, çalışan GoodbyeDPI'ın görsel arayüzle (GUI) kolaylaştırılmış halidir.

@@ -1,12 +1,21 @@
 # GoodbyeDPI GUI 🇹🇷
 
+<p align="right">
+  <a href="README.en.md">
+    <img src="https://flagcdn.com/w40/gb.png" height="20" alt="English"/>
+  </a>
+</p>
+
+> **This document is in Turkish. [Click here for English version](README.en.md)**  
+> **Bu belge Türkçedir. [İngilizce sürüm için tıklayın](README.en.md)**
+
+<img src="GUI.gif" width="800" alt="Uygulama Gösterimi"/>
+
 Bu yazılım, çalışan GoodbyeDPI'ın görsel arayüzle (GUI) kolaylaştırılmış halidir.
 
 [GoodbyeDPI](https://github.com/ValdikSS/GoodbyeDPI) ve [GoodbyeDPI-Turkey](https://github.com/cagritaskn/GoodbyeDPI-Turkey) projelerine dayanır. Derin Paket İnceleme (DPI) engellerini aşmayı hedefleyen bu araç, sistem tepsisinden kontrol edilebilen sade bir arayüzle sunulmuştur.
 
 Proje, orijinal DPI bypass motoru ile birlikte tek seferde derlenmiş olup, betiklerle uyumlu biçimde doğrudan çalışır.
-
-<img src="GUI.gif" width="800" height="450" alt="Uygulama Gösterimi"/>
 
 
 
@@ -19,6 +28,8 @@ Proje, orijinal DPI bypass motoru ile birlikte tek seferde derlenmiş olup, beti
 3. Sağ tıklayıp **Yönetici olarak çalıştırın**.
 4. Sistem tepsisine yerleşir, ikon üzerinden başlat/durdur yapılabilir.
 
+
+> **Exit (Çıkış)** tuşuyla uygulama tamamen kapatılır. Herhangi bir çökme durumunda arkasında dosya kalıntısı bırakmaz.
 
 ---
 

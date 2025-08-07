@@ -1,4 +1,4 @@
-# GoodbyeDPI GUI 🇹🇷
+# GoodbyeDPI GUI 
 
 Bu yazılım, çalışan GoodbyeDPI'ın görsel arayüzle (GUI) kolaylaştırılmış halidir. <a href="README.en.md"><img src="https://flagcdn.com/w40/gb.png" height="18" alt="English"/></a>
 

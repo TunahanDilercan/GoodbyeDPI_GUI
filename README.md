@@ -18,8 +18,6 @@ Proje, orijinal DPI bypass motoru ile birlikte tek seferde derlenmiş olup, beti
 4. Sistem tepsisine yerleşir, ikon üzerinden başlat/durdur yapılabilir.
 
 
-> **Exit (Çıkış)** tuşuyla uygulama tamamen kapatılır. Herhangi bir çökme durumunda arkasında dosya kalıntısı bırakmaz.
-
 ---
 
 ---
